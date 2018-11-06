@@ -19,6 +19,8 @@ public abstract class BeanTransformer<T, S extends PropertiesSourceObject> {
             = new Signature("mergeProperties", Constants.TYPE_OBJECT
             , new Type[]{Constants.TYPE_OBJECT, Constants.TYPE_OBJECT});
 
+
+
     private final Class<T> targetClass;
 
     private final Class<S> sourceClass;
@@ -70,7 +72,40 @@ public abstract class BeanTransformer<T, S extends PropertiesSourceObject> {
         }
 
         void buildMethod_mergeProperties(ClassEmitter ce) {
+            CodeEmitter emitter = ce.begin_method(Constants.ACC_PUBLIC,
+                    MERGE_PROPERTIES,
+                    null);
+            buildMethodBody_mergeProperties(emitter);
+            emitter.end_method();
+        }
 
+        private void buildMethodBody_mergeProperties(CodeEmitter emitter) {
+            BeanMappingInfo beanMappingInfo = BeanMappingInfo.parser(target);
+            Set<MappingInfoItem> infoItems = beanMappingInfo.getMappingInfos().get(source);
+            if (infoItems != null && infoItems.isEmpty()) {
+                for(MappingInfoItem infoItem : infoItems){
+                    buildStatementForItem(emitter,infoItem);
+                }
+            }else{
+                emitter.load_arg(0);
+            }
+
+            emitter.return_value();
+        }
+
+        private void buildStatementForItem(CodeEmitter emitter, MappingInfoItem infoItem) {
+            int target_arg = 0, source_arg = 1;
+            MethodInfo read = ReflectUtils.getMethodInfo(infoItem.getSourceGetter().getReadMethod());
+            MethodInfo write = ReflectUtils.getMethodInfo(infoItem.getTargetSetter().getWriteMethod());
+
+            if(infoItem.isNeedDeepCopy()){
+
+            }else{
+                emitter.load_arg(source_arg);
+                if(infoItem.getConverter() != null){
+//                    emitter.
+                }
+            }
         }
 
 
@@ -87,15 +122,10 @@ public abstract class BeanTransformer<T, S extends PropertiesSourceObject> {
             Local newTargetInstanceLocal = emitter.make_local(targetType);
             emitter.new_instance(targetType);
             emitter.store_local(newTargetInstanceLocal);
-
-            BeanMappingInfo beanMappingInfo = BeanMappingInfo.parser(target);
-            Set<MappingInfoItem> infoItems = beanMappingInfo.getMappingInfos().get(source);
-            if (infoItems != null && infoItems.isEmpty()) {
-
-            } else {
-                emitter.load_local(newTargetInstanceLocal);
-            }
-
+            emitter.load_this();
+            emitter.load_local(newTargetInstanceLocal);
+            emitter.load_arg(0);
+            emitter.invoke_virtual_this(MERGE_PROPERTIES);
             emitter.return_value();
         }
 
