@@ -10,6 +10,7 @@ import java.util.function.Function;
 public class MappingInfoItem {
     private static final String CONVERTER_METHOD_NAME = "apply";
 
+    private String propertyname;
     private PropertyDescriptor sourceGetter;
     private PropertyDescriptor targetSetter;
     private boolean needDeepCopy;
@@ -19,7 +20,21 @@ public class MappingInfoItem {
     }
 
     public void verify() {
+        verifyPropertyNameIsEqual();
         verifyCoverterCanBeUsed();
+    }
+
+    private void verifyPropertyNameIsEqual() {
+        if (sourceGetter == null) {
+            throw new BeanMappingException("source property getter is null");
+        }
+        if (targetSetter == null) {
+            throw new BeanMappingException("target property setter is null");
+        }
+        if (!sourceGetter.getName().equals(targetSetter.getName())) {
+            throw new BeanMappingException("the property of getter does not match to target property setter");
+        }
+        propertyname = sourceGetter.getName();
     }
 
     private void verifyCoverterCanBeUsed() {
@@ -65,6 +80,10 @@ public class MappingInfoItem {
                 ", needDeepCopy=" + needDeepCopy +
                 ", converter=" + converter +
                 '}';
+    }
+
+    public String getPropertyname() {
+        return propertyname;
     }
 
     public PropertyDescriptor getSourceGetter() {

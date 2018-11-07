@@ -20,7 +20,6 @@ public abstract class BeanTransformer<T, S extends PropertiesSourceObject> {
             , new Type[]{Constants.TYPE_OBJECT, Constants.TYPE_OBJECT});
 
 
-
     private final Class<T> targetClass;
 
     private final Class<S> sourceClass;
@@ -49,8 +48,11 @@ public abstract class BeanTransformer<T, S extends PropertiesSourceObject> {
 
     public static class Generater<T, S extends PropertiesSourceObject> extends AbstractClassGenerator<BeanTransformer<T, S>> {
         private static final AbstractClassGenerator.Source SOURCE = new Source(BeanTransformer.class.getName());
+        public static final String CONVERTER_FIELD_PREFIX = "converterOf";
         private Class<S> source;
         private Class<T> target;
+        private BeanMappingInfo beanMappingInfo;
+
 
         public Generater() {
             super(SOURCE);
@@ -65,10 +67,44 @@ public abstract class BeanTransformer<T, S extends PropertiesSourceObject> {
         @Override
         public void generateClass(ClassVisitor classVisitor) throws Exception {
             ClassEmitter ce = new ClassEmitter(classVisitor);
-            initBaseClassStructure(ce);
+
+            initClassStructure(ce);
+
+            initDefaultConstruct(ce);
+
             buildMethod_getTargetInstanceFrom(ce);
+
             buildMethod_mergeProperties(ce);
+
             ce.end_class();
+        }
+
+        private void initClassStructure(ClassEmitter ce) {
+            ce.begin_class(Constants.V1_8,
+                    Constants.ACC_PUBLIC,
+                    getClassName(),
+                    BEAN_TRANSFORMER,
+                    new Type[]{},
+                    Constants.SOURCE_FILE);
+
+            Set<MappingInfoItem> infoItems = beanMappingInfo.getMappingInfos().get(source);
+//            Map<String , String> fieldConverterMap =
+//                    infoItems.stream()
+//                    .filter(infoItem -> infoItem.getConverter() != null)
+//                    .collect()
+//                    .collect(toMap(infoItem -> {
+//                        ce.declare_field(
+//                                Constants.ACC_PRIVATE,
+//                                getConverterFieldName(infoItem),
+//                                Type.getType(infoItem.getConverter().getClass()),
+//                                infoItem.getConverter()
+//                        );
+//                        return  infoItem.getPropertyname();
+//                    }),infoItem -> getConverterFieldName(infoItem));
+        }
+
+        private String getConverterFieldName(MappingInfoItem infoItem) {
+            return CONVERTER_FIELD_PREFIX + infoItem.getPropertyname();
         }
 
         void buildMethod_mergeProperties(ClassEmitter ce) {
@@ -83,10 +119,10 @@ public abstract class BeanTransformer<T, S extends PropertiesSourceObject> {
             BeanMappingInfo beanMappingInfo = BeanMappingInfo.parser(target);
             Set<MappingInfoItem> infoItems = beanMappingInfo.getMappingInfos().get(source);
             if (infoItems != null && infoItems.isEmpty()) {
-                for(MappingInfoItem infoItem : infoItems){
-                    buildStatementForItem(emitter,infoItem);
+                for (MappingInfoItem infoItem : infoItems) {
+                    buildStatementForItem(emitter, infoItem);
                 }
-            }else{
+            } else {
                 emitter.load_arg(0);
             }
 
@@ -98,11 +134,11 @@ public abstract class BeanTransformer<T, S extends PropertiesSourceObject> {
             MethodInfo read = ReflectUtils.getMethodInfo(infoItem.getSourceGetter().getReadMethod());
             MethodInfo write = ReflectUtils.getMethodInfo(infoItem.getTargetSetter().getWriteMethod());
 
-            if(infoItem.isNeedDeepCopy()){
+            if (infoItem.isNeedDeepCopy()) {
 
-            }else{
+            } else {
                 emitter.load_arg(source_arg);
-                if(infoItem.getConverter() != null){
+                if (infoItem.getConverter() != null) {
 //                    emitter.
                 }
             }
@@ -129,13 +165,16 @@ public abstract class BeanTransformer<T, S extends PropertiesSourceObject> {
             emitter.return_value();
         }
 
-        void initBaseClassStructure(ClassEmitter ce) {
-            ce.begin_class(Constants.V1_2,
-                    Constants.ACC_PUBLIC,
-                    getClassName(),
-                    BEAN_TRANSFORMER,
-                    new Type[]{},
-                    "<generated>");
+        void initDefaultConstruct(ClassEmitter ce) {
+            CodeEmitter codeEmitter =
+                    ce.begin_method(
+                            Constants.ACC_PUBLIC,
+                            new Signature(Constants.CONSTRUCTOR_NAME,
+                                    Type.VOID_TYPE,
+                                    Constants.TYPES_EMPTY
+                            ),
+                            Constants.TYPES_EMPTY
+                    );
             EmitUtils.null_constructor(ce);
 
         }
@@ -162,6 +201,7 @@ public abstract class BeanTransformer<T, S extends PropertiesSourceObject> {
                 this.setNamePrefix(target.getName());
             }
             this.target = target;
+            beanMappingInfo = BeanMappingInfo.parser(target);
         }
 
         @Override
@@ -183,7 +223,7 @@ public abstract class BeanTransformer<T, S extends PropertiesSourceObject> {
     }
 
     interface BeanTransformerKey {
-        Object newInstance(String var1, String var2);
+        Object newInstance(String targetClassName, String sourceClassName);
     }
 
 
