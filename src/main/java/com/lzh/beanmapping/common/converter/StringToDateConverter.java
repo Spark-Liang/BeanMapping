@@ -5,6 +5,8 @@ import java.util.function.Function;
 
 public class StringToDateConverter implements Function<String, Date> {
 
+    public StringToDateConverter(){}
+
     @Override
     public Date apply(String string) {
         return new Date(string);

@@ -5,33 +5,42 @@ import org.springframework.asm.ClassVisitor;
 import org.springframework.asm.Type;
 import org.springframework.cglib.core.*;
 
+import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
+
+import static java.util.stream.Collectors.toMap;
 
 public abstract class BeanTransformer<T, S extends PropertiesSourceObject> {
     private static final BeanTransformer.BeanTransformerKey KEY_FACTORY
             = (BeanTransformer.BeanTransformerKey) KeyFactory.create(BeanTransformer.BeanTransformerKey.class);
-    private static final Type BEAN_TRANSFORMER = TypeUtils.parseType("com.lzh.beanmapping.common.util.beanmapping.BeanTransformer");
+    private static final Type BEAN_TRANSFORMER = Type.getType(BeanTransformer.class);
     private static final Signature GET_TARGET_INSTANCE_FROM
             = new Signature("getTargetInstanceFrom", Constants.TYPE_OBJECT
-            , new Type[]{Constants.TYPE_OBJECT});
+            , new Type[]{Type.getType(PropertiesSourceObject.class)});
     private static final Signature MERGE_PROPERTIES
             = new Signature("mergeProperties", Constants.TYPE_OBJECT
-            , new Type[]{Constants.TYPE_OBJECT, Constants.TYPE_OBJECT});
+            , new Type[]{Constants.TYPE_OBJECT, Type.getType(PropertiesSourceObject.class)});
 
+    private static final Signature CONVERTER_METHOD;
 
-    private final Class<T> targetClass;
+    static {
+        Method convertMethod = Function.class.getDeclaredMethods()[0];
+        CONVERTER_METHOD = new Signature(convertMethod.getName(),
+                Type.getReturnType(convertMethod),
+                Type.getArgumentTypes(convertMethod));
+    }
 
-    private final Class<S> sourceClass;
-
-    public BeanTransformer(Class<T> targetClass, Class<S> sourceClass) {
-        this.targetClass = targetClass;
-        this.sourceClass = sourceClass;
+    public BeanTransformer() {
     }
 
     public abstract T getTargetInstanceFrom(S source);
 
     public abstract T mergeProperties(T target, S source);
+
 
     /**
      * @param targetClass
@@ -41,8 +50,10 @@ public abstract class BeanTransformer<T, S extends PropertiesSourceObject> {
      * @return
      */
     public static <T, S extends PropertiesSourceObject> BeanTransformer newInstance(Class<T> targetClass, Class<S> sourceClass) {
-        //TODO
-        return null;
+        Generater<T, S> generater = new Generater<>();
+        generater.setTarget(targetClass);
+        generater.setSource(sourceClass);
+        return generater.create();
     }
 
 
@@ -68,18 +79,18 @@ public abstract class BeanTransformer<T, S extends PropertiesSourceObject> {
         public void generateClass(ClassVisitor classVisitor) throws Exception {
             ClassEmitter ce = new ClassEmitter(classVisitor);
 
-            initClassStructure(ce);
+            Map<Function, String> converterFieldMap = initClassStructure(ce);
 
-            initDefaultConstruct(ce);
+            initDefaultConstruct(ce, converterFieldMap);
 
             buildMethod_getTargetInstanceFrom(ce);
 
-            buildMethod_mergeProperties(ce);
+            buildMethod_mergeProperties(ce, converterFieldMap);
 
             ce.end_class();
         }
 
-        private void initClassStructure(ClassEmitter ce) {
+        private Map<Function, String> initClassStructure(ClassEmitter ce) {
             ce.begin_class(Constants.V1_8,
                     Constants.ACC_PUBLIC,
                     getClassName(),
@@ -88,58 +99,89 @@ public abstract class BeanTransformer<T, S extends PropertiesSourceObject> {
                     Constants.SOURCE_FILE);
 
             Set<MappingInfoItem> infoItems = beanMappingInfo.getMappingInfos().get(source);
-//            Map<String , String> fieldConverterMap =
-//                    infoItems.stream()
-//                    .filter(infoItem -> infoItem.getConverter() != null)
-//                    .collect()
-//                    .collect(toMap(infoItem -> {
-//                        ce.declare_field(
-//                                Constants.ACC_PRIVATE,
-//                                getConverterFieldName(infoItem),
-//                                Type.getType(infoItem.getConverter().getClass()),
-//                                infoItem.getConverter()
-//                        );
-//                        return  infoItem.getPropertyname();
-//                    }),infoItem -> getConverterFieldName(infoItem));
+            Map<Function, String> fieldConverterMap = new HashMap<>();
+            infoItems.stream()
+                    .filter(infoItem -> infoItem.getConverter() != null)
+                    .forEach(infoItem -> {
+                        String converterFieldName = getConverterFieldName(infoItem);
+                        ce.declare_field(
+                                Constants.ACC_PRIVATE,
+                                converterFieldName,
+                                Type.getType(infoItem.getConverter().getClass()),
+                                null
+                        );
+                        fieldConverterMap.put(infoItem.getConverter(), converterFieldName);
+                    });
+            return fieldConverterMap;
         }
 
         private String getConverterFieldName(MappingInfoItem infoItem) {
-            return CONVERTER_FIELD_PREFIX + infoItem.getPropertyname();
+            return CONVERTER_FIELD_PREFIX + "_From_" + infoItem.getSourceGetter().getName() + "_To_" + infoItem.getSourceGetter().getName();
         }
 
-        void buildMethod_mergeProperties(ClassEmitter ce) {
+        void buildMethod_mergeProperties(ClassEmitter ce, Map<Function, String> converterFieldMap) {
             CodeEmitter emitter = ce.begin_method(Constants.ACC_PUBLIC,
                     MERGE_PROPERTIES,
                     null);
-            buildMethodBody_mergeProperties(emitter);
+            buildMethodBody_mergeProperties(emitter, converterFieldMap);
             emitter.end_method();
         }
 
-        private void buildMethodBody_mergeProperties(CodeEmitter emitter) {
-            BeanMappingInfo beanMappingInfo = BeanMappingInfo.parser(target);
+        private void buildMethodBody_mergeProperties(CodeEmitter emitter, Map<Function, String> converterFieldMap) {
             Set<MappingInfoItem> infoItems = beanMappingInfo.getMappingInfos().get(source);
-            if (infoItems != null && infoItems.isEmpty()) {
+
+            if (infoItems != null && !infoItems.isEmpty()) {
+                int target_arg = 0, source_arg = 1;
+                Type targetType = Type.getType(target),
+                        sourceType = Type.getType(source);
+                Local targetLocal = emitter.make_local(targetType),
+                        sourceLocal = emitter.make_local(sourceType);
+
+                emitter.load_arg(target_arg);
+                emitter.checkcast(targetType);
+                emitter.store_local(targetLocal);
+
+                emitter.load_arg(source_arg);
+                emitter.checkcast(sourceType);
+                emitter.store_local(sourceLocal);
+
                 for (MappingInfoItem infoItem : infoItems) {
-                    buildStatementForItem(emitter, infoItem);
+                    buildStatementForItem(emitter, infoItem, targetLocal, sourceLocal, converterFieldMap);
                 }
-            } else {
-                emitter.load_arg(0);
             }
 
+            emitter.load_arg(0);
             emitter.return_value();
         }
 
-        private void buildStatementForItem(CodeEmitter emitter, MappingInfoItem infoItem) {
-            int target_arg = 0, source_arg = 1;
+        private void buildStatementForItem(CodeEmitter emitter
+                , MappingInfoItem infoItem
+                , Local targetLocal
+                , Local sourceLocal
+                , Map<Function, String> converterFieldMap) {
             MethodInfo read = ReflectUtils.getMethodInfo(infoItem.getSourceGetter().getReadMethod());
             MethodInfo write = ReflectUtils.getMethodInfo(infoItem.getTargetSetter().getWriteMethod());
 
             if (infoItem.isNeedDeepCopy()) {
 
             } else {
-                emitter.load_arg(source_arg);
                 if (infoItem.getConverter() != null) {
-//                    emitter.
+                    Function converter = infoItem.getConverter();
+                    String coverterFieldName = converterFieldMap.get(converter);
+
+                    emitter.load_local(targetLocal);
+                    emitter.load_this();
+                    emitter.getfield(coverterFieldName);
+                    emitter.load_local(sourceLocal);
+                    emitter.invoke(read);
+                    emitter.invoke_interface(Type.getType(Function.class), CONVERTER_METHOD);
+                    emitter.checkcast(Type.getType(infoItem.getTargetSetter().getPropertyType()));
+                    emitter.invoke(write);
+                } else {
+                    emitter.load_local(targetLocal);
+                    emitter.load_local(sourceLocal);
+                    emitter.invoke(read);
+                    emitter.invoke(write);
                 }
             }
         }
@@ -156,7 +198,10 @@ public abstract class BeanTransformer<T, S extends PropertiesSourceObject> {
         void buildMethodBody_getTargetInstanceFrom(CodeEmitter emitter) {
             Type targetType = Type.getType(target);
             Local newTargetInstanceLocal = emitter.make_local(targetType);
+
             emitter.new_instance(targetType);
+            emitter.dup();
+            emitter.invoke_constructor(targetType);
             emitter.store_local(newTargetInstanceLocal);
             emitter.load_this();
             emitter.load_local(newTargetInstanceLocal);
@@ -165,7 +210,7 @@ public abstract class BeanTransformer<T, S extends PropertiesSourceObject> {
             emitter.return_value();
         }
 
-        void initDefaultConstruct(ClassEmitter ce) {
+        void initDefaultConstruct(ClassEmitter ce, Map<Function, String> converterFieldMap) {
             CodeEmitter codeEmitter =
                     ce.begin_method(
                             Constants.ACC_PUBLIC,
@@ -175,8 +220,24 @@ public abstract class BeanTransformer<T, S extends PropertiesSourceObject> {
                             ),
                             Constants.TYPES_EMPTY
                     );
-            EmitUtils.null_constructor(ce);
+            codeEmitter.load_this();
+            codeEmitter.super_invoke_constructor();
 
+            converterFieldMap.entrySet().stream()
+                    .forEach(entry -> {
+                        Function converter = entry.getKey();
+                        String converterFieldName = entry.getValue();
+                        Type converterType = Type.getType(converter.getClass());
+
+                        codeEmitter.load_this();
+                        codeEmitter.new_instance(converterType);
+                        codeEmitter.dup();
+                        codeEmitter.invoke_constructor(converterType);
+                        codeEmitter.putfield(converterFieldName);
+                    });
+
+            codeEmitter.return_value();
+            codeEmitter.end_method();
         }
 
         /**
