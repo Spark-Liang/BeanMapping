@@ -12,23 +12,33 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 
-import static java.util.stream.Collectors.toMap;
-
 public abstract class BeanTransformer<T, S extends PropertiesSourceObject> {
     private static final BeanTransformer.BeanTransformerKey KEY_FACTORY
             = (BeanTransformer.BeanTransformerKey) KeyFactory.create(BeanTransformer.BeanTransformerKey.class);
     private static final Type BEAN_TRANSFORMER = Type.getType(BeanTransformer.class);
+    private static final Signature CONVERTER_METHOD;
+
     private static final Signature GET_TARGET_INSTANCE_FROM
             = new Signature("getTargetInstanceFrom", Constants.TYPE_OBJECT
             , new Type[]{Type.getType(PropertiesSourceObject.class)});
     private static final Signature MERGE_PROPERTIES
             = new Signature("mergeProperties", Constants.TYPE_OBJECT
             , new Type[]{Constants.TYPE_OBJECT, Type.getType(PropertiesSourceObject.class)});
+    private static final Signature GET_SOURCE_INSTANCE_FROM
+            = new Signature("getSourceInstanceFrom",Type.getType(PropertiesSourceObject.class),
+            new Type[]{Constants.TYPE_OBJECT});
+    private static final Signature MERGE_PROPERTIES_TO_SOURCE
+            = new Signature("mergePropertiesToSource",Type.getType(PropertiesSourceObject.class),
+            new Type[]{Type.getType(PropertiesSourceObject.class),Constants.TYPE_OBJECT});
 
-    private static final Signature CONVERTER_METHOD;
 
     static {
-        Method convertMethod = Function.class.getDeclaredMethods()[0];
+        Method convertMethod = null;
+        try {
+             convertMethod = Function.class.getDeclaredMethod("apply",new Class[]{Object.class});
+        } catch (NoSuchMethodException e) {
+            throw new RuntimeException(e);
+        }
         CONVERTER_METHOD = new Signature(convertMethod.getName(),
                 Type.getReturnType(convertMethod),
                 Type.getArgumentTypes(convertMethod));
@@ -37,10 +47,35 @@ public abstract class BeanTransformer<T, S extends PropertiesSourceObject> {
     public BeanTransformer() {
     }
 
+    /**
+     * new an target instance by the default constructor of the target class ,and copy property from the source object
+     * @param source instance of source class
+     * @return target object
+     */
     public abstract T getTargetInstanceFrom(S source);
 
+    /**
+     * copy corresponding property from source object to target object
+     * @param target instance of target class
+     * @param source instance of source class
+     * @return target object
+     */
     public abstract T mergeProperties(T target, S source);
 
+    /**
+     * new an source instance by the default constructor of the target class ,and copy property from the target object
+     * @param target instance of target class
+     * @return source object
+     */
+    public abstract S getSourceInstanceFrom(T target);
+
+    /**
+     * copy corresponding property from target object to source object
+     * @param source instance of source class
+     * @param target instance of target class
+     * @return source object
+     */
+    public abstract S mergePropertiesToSource(S source, T target);
 
     /**
      * @param targetClass
@@ -100,23 +135,23 @@ public abstract class BeanTransformer<T, S extends PropertiesSourceObject> {
 
             Set<MappingInfoItem> infoItems = beanMappingInfo.getMappingInfos().get(source);
             Map<Function, String> fieldConverterMap = new HashMap<>();
-            infoItems.stream()
-                    .filter(infoItem -> infoItem.getConverter() != null)
-                    .forEach(infoItem -> {
-                        String converterFieldName = getConverterFieldName(infoItem);
-                        ce.declare_field(
-                                Constants.ACC_PRIVATE,
-                                converterFieldName,
-                                Type.getType(infoItem.getConverter().getClass()),
-                                null
-                        );
-                        fieldConverterMap.put(infoItem.getConverter(), converterFieldName);
-                    });
+//            infoItems.stream()
+//                    .filter(infoItem -> infoItem.getConverter() != null)
+//                    .forEach(infoItem -> {
+//                        String converterFieldName = getConverterFieldName(infoItem);
+//                        ce.declare_field(
+//                                Constants.ACC_PRIVATE,
+//                                converterFieldName,
+//                                Type.getType(infoItem.getConverter().getClass()),
+//                                null
+//                        );
+//                        fieldConverterMap.put(infoItem.getConverter(), converterFieldName);
+//                    });
             return fieldConverterMap;
         }
 
         private String getConverterFieldName(MappingInfoItem infoItem) {
-            return CONVERTER_FIELD_PREFIX + "_From_" + infoItem.getSourceGetter().getName() + "_To_" + infoItem.getSourceGetter().getName();
+            return CONVERTER_FIELD_PREFIX + "_From_" + infoItem.getSourceProperty().getName() + "_To_" + infoItem.getSourceProperty().getName();
         }
 
         void buildMethod_mergeProperties(ClassEmitter ce, Map<Function, String> converterFieldMap) {
@@ -159,31 +194,31 @@ public abstract class BeanTransformer<T, S extends PropertiesSourceObject> {
                 , Local targetLocal
                 , Local sourceLocal
                 , Map<Function, String> converterFieldMap) {
-            MethodInfo read = ReflectUtils.getMethodInfo(infoItem.getSourceGetter().getReadMethod());
-            MethodInfo write = ReflectUtils.getMethodInfo(infoItem.getTargetSetter().getWriteMethod());
-
-            if (infoItem.isNeedDeepCopy()) {
-
-            } else {
-                if (infoItem.getConverter() != null) {
-                    Function converter = infoItem.getConverter();
-                    String coverterFieldName = converterFieldMap.get(converter);
-
-                    emitter.load_local(targetLocal);
-                    emitter.load_this();
-                    emitter.getfield(coverterFieldName);
-                    emitter.load_local(sourceLocal);
-                    emitter.invoke(read);
-                    emitter.invoke_interface(Type.getType(Function.class), CONVERTER_METHOD);
-                    emitter.checkcast(Type.getType(infoItem.getTargetSetter().getPropertyType()));
-                    emitter.invoke(write);
-                } else {
-                    emitter.load_local(targetLocal);
-                    emitter.load_local(sourceLocal);
-                    emitter.invoke(read);
-                    emitter.invoke(write);
-                }
-            }
+            MethodInfo read = ReflectUtils.getMethodInfo(infoItem.getSourceProperty().getReadMethod());
+            MethodInfo write = ReflectUtils.getMethodInfo(infoItem.getTargetProperty().getWriteMethod());
+//
+//            if (infoItem.isNeedDeepCopy()) {
+//
+//            } else {
+//                if (infoItem.getConverter() != null) {
+//                    Function converter = infoItem.getConverter();
+//                    String coverterFieldName = converterFieldMap.get(converter);
+//
+//                    emitter.load_local(targetLocal);
+//                    emitter.load_this();
+//                    emitter.getfield(coverterFieldName);
+//                    emitter.load_local(sourceLocal);
+//                    emitter.invoke(read);
+//                    emitter.invoke_interface(Type.getType(Function.class), CONVERTER_METHOD);
+//                    emitter.checkcast(Type.getType(infoItem.getTargetProperty().getPropertyType()));
+//                    emitter.invoke(write);
+//                } else {
+//                    emitter.load_local(targetLocal);
+//                    emitter.load_local(sourceLocal);
+//                    emitter.invoke(read);
+//                    emitter.invoke(write);
+//                }
+//            }
         }
 
 

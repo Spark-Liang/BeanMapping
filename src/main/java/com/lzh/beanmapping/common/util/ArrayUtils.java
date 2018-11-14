@@ -2,6 +2,7 @@ package com.lzh.beanmapping.common.util;
 
 import java.lang.reflect.Array;
 import java.util.Arrays;
+import java.util.Iterator;
 import java.util.function.Predicate;
 
 import static java.util.stream.Collectors.toList;
@@ -48,5 +49,33 @@ public class ArrayUtils {
                 .filter(e -> predicate == null || predicate.test(e))
                 .collect(toList())
                 .toArray(exampleArray);
+    }
+
+    /**
+     * check the array is null or length is equals to zero
+     * @param arr array to test
+     * @return is empty or not
+     */
+    public static boolean isEmpty(Object[] arr){
+        return !isNotEmpty(arr);
+    }
+
+    /**
+     * check the length of array is equals not zero
+     * @param arr array to test
+     * @return is not empty or not
+     */
+    public static boolean isNotEmpty(Object[] arr){
+        return arr != null && arr.length > 0;
+    }
+
+    /**
+     * create an iterator from the given array
+     * @param arr the array to be iterate
+     * @param <T> component type of the array
+     * @return {@link Iterator}
+     */
+    public static <T> Iterator<T> iterator(T[] arr){
+        return Arrays.asList(arr).iterator();
     }
 }

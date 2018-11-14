@@ -41,15 +41,15 @@ public class TestBeanMappingInfo {
         Set<MappingInfoItem> mappingInfoItems = SUT.getMappingInfos().get(TestSourceClass.class);
         assertThat(mappingInfoItems.size()).isEqualTo(2);
         MappingInfoItem itemWithoutConverter = new MappingInfoItem();
-        itemWithoutConverter.setSourceGetter(propertyDescriptorMapOfSource.get("sourceName"));
-        itemWithoutConverter.setTargetSetter(propertyDescriptorMapOfTarget.get("name"));
-        itemWithoutConverter.setNeedDeepCopy(false);
-        itemWithoutConverter.setConverter(null);
+        itemWithoutConverter.setSourceProperty(propertyDescriptorMapOfSource.get("sourceName"));
+        itemWithoutConverter.setTargetProperty(propertyDescriptorMapOfTarget.get("name"));
+//        itemWithoutConverter.setNeedDeepCopy(false);
+//        itemWithoutConverter.setConverter(null);
         MappingInfoItem itemWithConverter = new MappingInfoItem();
-        itemWithConverter.setSourceGetter(propertyDescriptorMapOfSource.get("sourceDate"));
-        itemWithConverter.setTargetSetter(propertyDescriptorMapOfTarget.get("date"));
-        itemWithConverter.setNeedDeepCopy(false);
-        itemWithConverter.setConverter(new StringToDateConverter());
+        itemWithConverter.setSourceProperty(propertyDescriptorMapOfSource.get("sourceDate"));
+        itemWithConverter.setTargetProperty(propertyDescriptorMapOfTarget.get("date"));
+//        itemWithConverter.setNeedDeepCopy(false);
+//        itemWithConverter.setConverter(new StringToDateConverter());
         assertThat(mappingInfoItems).contains(itemWithoutConverter);
         assertThat(mappingInfoItems).contains(itemWithConverter);
 

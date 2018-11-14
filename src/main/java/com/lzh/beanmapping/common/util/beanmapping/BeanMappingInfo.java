@@ -71,7 +71,7 @@ public class BeanMappingInfo {
                         logger.info("can not found setter of target property {} from source class {}", targetPropertyName, targetClass);
                         throw new BeanMappingException("can not found setter of source property from target class");
                     } else {
-                        infoItem.setTargetSetter(targetSetter);
+                        infoItem.setTargetProperty(targetSetter);
                     }
 
                     DataMapping dataMapping = field.getDeclaredAnnotation(DataMapping.class);
@@ -81,16 +81,16 @@ public class BeanMappingInfo {
                         logger.info("can not found getter of source property {} from source class {}", sourcePropertyName, sourceClass);
                         throw new BeanMappingException("can not found source property from source class");
                     } else {
-                        infoItem.setSourceGetter(sourceGetter);
+                        infoItem.setSourceProperty(sourceGetter);
                     }
-                    infoItem.setNeedDeepCopy(dataMapping.needDeepCopy());
+//                    infoItem.setNeedDeepCopy(dataMapping.needDeepCopy());
 
                     Class converterClass = dataMapping.converter();
                     if (!converterClass.equals(DataMapping.DEFAULT_CONVERTER_CLASS)) {
                         try {
                             Constructor<Function> constructor = converterClass.getConstructor();
                             Function converter = constructor.newInstance();
-                            infoItem.setConverter(converter);
+//                            infoItem.setConverter(converter);
                         } catch (NoSuchMethodException e) {
                             logger.info("given converter class {} does not have default constructor", converterClass);
                             throw new BeanMappingException("given converter class does not have default constructor", e);
@@ -99,7 +99,7 @@ public class BeanMappingInfo {
                             throw new BeanMappingException("can not construct converter", e);
                         }
                     } else {
-                        infoItem.setConverter(null);
+//                        infoItem.setConverter(null);
                     }
 
                     infoItem.verify();
