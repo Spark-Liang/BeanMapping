@@ -74,7 +74,7 @@ public class TestBeanTransformer {
         @DataMapping(sourceClass = TestSourceClass.class, sourceProperty = "sourceName")
         private String name;
 
-        @DataMapping(sourceClass = TestSourceClass.class, sourceProperty = "sourceDate", converter = StringToDateConverter.class)
+//        @DataMapping(sourceClass = TestSourceClass.class, sourceProperty = "sourceDate", converter = StringToDateConverter.class)
         private Date date;
 
         public String getName() {

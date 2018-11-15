@@ -297,7 +297,7 @@ public abstract class BeanTransformer<T, S extends PropertiesSourceObject> {
                 this.setNamePrefix(target.getName());
             }
             this.target = target;
-            beanMappingInfo = BeanMappingInfo.parser(target);
+            beanMappingInfo = BeanMappingInfo.parse(target);
         }
 
         @Override

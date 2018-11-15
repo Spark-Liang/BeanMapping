@@ -17,7 +17,7 @@ public class ReflectUtilsTest {
                 extendClass = TestClassExtendOtherClass.class;
 
         //when
-        Field[] fields = ReflectUtils.getAllFields(TestClassExtendOtherClass.class);
+        Field[] fields = ReflectUtils.getAllDeclaredFields(TestClassExtendOtherClass.class);
 
         //then
         assertThat(fields).isNotNull();
@@ -31,7 +31,7 @@ public class ReflectUtilsTest {
                 extendClass = TestClassExtendOtherClass.class;
 
         //when
-        Field[] fields = ReflectUtils.getAllFields(TestClassExtendOtherClass.class, TestClassExtendOtherClass.class);
+        Field[] fields = ReflectUtils.getAllDeclaredFields(TestClassExtendOtherClass.class, TestClassExtendOtherClass.class);
 
         //then
         assertThat(fields).isNotNull();
@@ -45,7 +45,7 @@ public class ReflectUtilsTest {
                 extendClass = TestClassExtendOtherClass.class;
 
         //when
-        Field[] fields = ReflectUtils.getAllFields(TestClassExtendOtherClass.class, (Class) null);
+        Field[] fields = ReflectUtils.getAllDeclaredFields(TestClassExtendOtherClass.class, (Class) null);
 
         //then
         assertThat(fields).isNotNull();
@@ -55,7 +55,7 @@ public class ReflectUtilsTest {
     @Test(expected = RuntimeException.class)
     public void shouldThrowExceptionWhenStopClassIsSubClassOfGivenClass() {
         //when
-        ReflectUtils.getAllFields(TestClassExtendObject.class, TestClassExtendOtherClass.class);
+        ReflectUtils.getAllDeclaredFields(TestClassExtendObject.class, TestClassExtendOtherClass.class);
     }
 
     @Test
@@ -65,7 +65,7 @@ public class ReflectUtilsTest {
                 extendClass = TestClassExtendOtherClass.class;
 
         //when
-        Field[] fields = ReflectUtils.getAllFields(TestClassExtendOtherClass.class, field -> field.getName().equals("date"));
+        Field[] fields = ReflectUtils.getAllDeclaredFields(TestClassExtendOtherClass.class, field -> field.getName().equals("date"));
 
         //then
         assertThat(fields).isNotNull();

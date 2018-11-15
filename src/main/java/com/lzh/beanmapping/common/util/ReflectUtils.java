@@ -15,7 +15,7 @@ public class ReflectUtils {
      * @return array of Fields
      * @throws RuntimeException when StopClass can not be the subclass of given class will throw this exception
      */
-    public static Field[] getAllFields(Class clazz, Class stopClass, Predicate<Field> predicate) {
+    public static Field[] getAllDeclaredFields(Class clazz, Class stopClass, Predicate<Field> predicate) {
         if (stopClass == null) {
             stopClass = Object.class;
         }
@@ -49,27 +49,28 @@ public class ReflectUtils {
     /**
      * this method will get all its fields includes all its superclass except Object.class
      *
-     * @see ReflectUtils#getAllFields(Class, Class)
+     * @see ReflectUtils#getAllDeclaredFields(Class, Class)
      */
-    public static Field[] getAllFields(Class clazz) {
-        return getAllFields(clazz, Object.class);
+    public static Field[] getAllDeclaredFields(Class clazz) {
+        return getAllDeclaredFields(clazz, Object.class);
     }
 
     /**
      * this method will get all its fields util stopClass and do nothing on filtering
      *
-     * @see ReflectUtils#getAllFields(Class, Class, Predicate)
+     * @see ReflectUtils#getAllDeclaredFields(Class, Class, Predicate)
      */
-    public static Field[] getAllFields(Class clazz, Class stopClass) {
-        return getAllFields(clazz, stopClass, null);
+    public static Field[] getAllDeclaredFields(Class clazz, Class stopClass) {
+        return getAllDeclaredFields(clazz, stopClass, null);
     }
 
     /**
-     * this method will get all its fields and do filtering based on given predicate
+     * this method will get all its fields include the fields in superclass
+     * , and do filtering based on given predicate
      *
-     * @see ReflectUtils#getAllFields(Class, Class, Predicate)
+     * @see ReflectUtils#getAllDeclaredFields(Class, Class, Predicate)
      */
-    public static Field[] getAllFields(Class clazz, Predicate<Field> predicate) {
-        return getAllFields(clazz, Object.class, predicate);
+    public static Field[] getAllDeclaredFields(Class clazz, Predicate<Field> predicate) {
+        return getAllDeclaredFields(clazz, Object.class, predicate);
     }
 }

@@ -520,7 +520,7 @@ public class MappingInfoItemTest {
         }
     }
 
-    public static class ConverterFromStringToIntegerForTest implements Function<String,Integer> {
+    private static class ConverterFromStringToIntegerForTest implements Function<String,Integer> {
 
         public ConverterFromStringToIntegerForTest(){}
 
@@ -530,7 +530,7 @@ public class MappingInfoItemTest {
         }
     }
 
-    public static class ConverterFromIntegerToStringForTest implements Function<Integer,String> {
+    private static class ConverterFromIntegerToStringForTest implements Function<Integer,String> {
 
         public ConverterFromIntegerToStringForTest (){}
 

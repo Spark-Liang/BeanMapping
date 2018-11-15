@@ -6,50 +6,55 @@ import java.lang.annotation.*;
 import java.util.function.Function;
 
 /**
- * This annotation is used to define the properties mapping between POJO and PO
+ * This annotation is used to define the properties mapping between POJO and PO.
+ * If you want to config the relationship between the property in the POJO and properties provider,
+ * you need to place this annotation on the field or the set method.
+ * And place on the set method is recommend.Because you need to make sure field name is
+ * same as the property name
  */
 @Retention(RetentionPolicy.RUNTIME)
-@Target({ElementType.FIELD})
-@Documented
+@Target({ElementType.FIELD,ElementType.METHOD})
 public @interface DataMapping {
-    Class DEFAULT_CONVERTER_CLASS = DefaultConverter.class;
-
     /**
      * define the property source class of the described property
      *
-     * @return
+     * @return the class that provide the property
      */
     Class<? extends PropertiesSourceObject> sourceClass();
 
     /**
      * define use which property in source class to set the described property
      *
-     * @return
+     * @return the name of the property to be provided
      */
     String sourceProperty();
 
     /**
-     * when this annotation is describe a {@link java.util.Map}, {@link java.util.Collection} or a POJO
-     * this setting is to control the copier whether to make a deepCopy on this property or not.
+     * define a convert chain that can convert the source property to target property.
+     * the converter chain must meet this restriction :
+     * <ul>
+     *     <li>Each of the converter in the chain must have the default constructor.</li>
+     *     <li>The input parameter of each of the converter can be assigned from the return type of the previous converter.</li>
+     *     <li>First converter's input type can be assign from the source property</li>
+     *     <li>The last converter's return type can be assign to the target property</li>
+     * </ul>
      *
-     * @return
+     *
+     * @return array of the converters
      */
-    boolean needDeepCopy() default false;
+    Class<? extends Function>[] toTargetConverterChain() default {};
 
     /**
-     * when this annotation is describe a property which parameter type is different from source property
-     * use this setting to provide converter
-     *
-     * @return
+     * define a convert chain that can convert the target property to source property.
+     * the converter chain must meet this restriction :
+     * <ul>
+     *     <li>Each of the converter in the chain must have the default constructor.</li>
+     *     <li>The input parameter of each of the converter can be assigned from the return type of the previous converter.</li>
+     *     <li>First converter's input type can be assign from the target property</li>
+     *     <li>The last converter's return type can be assign to the source property</li>
+     * </ul>
+     * @return array of the converters
      */
-    Class<? extends Function> converter() default DefaultConverter.class;
-
-}
-
-class DefaultConverter implements Function {
-    @Override
-    public Object apply(Object o) {
-        return o;
-    }
+    Class<? extends Function>[] toSourceConverterChain() default {};
 
 }

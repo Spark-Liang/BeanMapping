@@ -103,23 +103,28 @@ public class MappingInfoItem {
                 currentConverterClass = iterator.next();
                 verifyConverterCanConstruct(currentConverterClass);
                 Method convertMethod = getConverterMethod(currentConverterClass);
-                Class requireInputType = fromProperty.getPropertyType(),
-                        chainInputType = convertMethod.getParameterTypes()[0];
-                if(! Objects.equals(requireInputType, chainInputType)){
+                Class typeToBeProvided = fromProperty.getPropertyType(),
+                        typeToBeAssigned = convertMethod.getParameterTypes()[0];
+            if(!typeToBeAssigned.isAssignableFrom(typeToBeProvided)){
                     throw new BeanMappingException(CONVERTER_CHAIN_NOT_MATCH_INPUT_TYPE +
-                            "; required input type is " + requireInputType +
-                            " actual input type is " + chainInputType);
+                            "; type to be assigned is " + typeToBeAssigned +
+                            " type to provide is " + typeToBeProvided);
                 }
 
                 while (iterator.hasNext()) {
+                    Class nextNotGenericTypeConverterClass = getNextNotGenericTypeConverterClass(iterator);
+                    if(nextNotGenericTypeConverterClass == null){
+                        continue;
+                    }
+
                     previousConverterClass = currentConverterClass;
-                    currentConverterClass = iterator.next();
+                    currentConverterClass = nextNotGenericTypeConverterClass;
                     verifyConverterCanConstruct(currentConverterClass);
 
                     Method previousConvertMethod = getConverterMethod(previousConverterClass),
                             currentConvertMethod = getConverterMethod(currentConverterClass);
 
-                    if (!isReturnTypeMatchInputType(previousConvertMethod, currentConvertMethod)) {
+                    if (!canReturnTypeAssignToInputType(previousConvertMethod, currentConvertMethod)) {
                         throw new BeanMappingException(CONVERTER_NOT_MATCH_PREVIOUS_TYPE +
                                 "; previous converter is " + previousConverterClass +
                                 " current converter is " + currentConverterClass);
@@ -127,40 +132,66 @@ public class MappingInfoItem {
                 }
 
                 convertMethod = getConverterMethod(currentConverterClass);
-                Class requireReturnType = toProperty.getPropertyType(),
-                        chainReturnType = convertMethod.getReturnType();
-                if(! Objects.equals(requireReturnType, chainReturnType)){
+                Class typeOfPropertyToAssign = toProperty.getPropertyType(),
+                        providePropertyType = convertMethod.getReturnType();
+                if(! typeOfPropertyToAssign.isAssignableFrom(providePropertyType)){
                     throw new BeanMappingException(CONVERTER_CHAIN_NOT_MATCH_RETURN_TYPE +
-                            "; require return type is " + requireReturnType +
-                            " actual return type is " + chainReturnType);
+                            "; type to be assigned is " + typeOfPropertyToAssign +
+                            " type to provide is " + providePropertyType);
                 }
             }
         }
     }
 
-    private boolean isReturnTypeMatchInputType(Method method1, Method method2) {
-        return Objects.equals(method1.getReturnType(), method2.getParameterTypes()[0]);
+    private Class getNextNotGenericTypeConverterClass(Iterator<Class<? extends Function>> iterator) {
+        //TODD
+        return iterator.next();
     }
 
+    private boolean canReturnTypeAssignToInputType(Method method1, Method method2) {
+        return method2.getParameterTypes()[0]
+                .isAssignableFrom(method1.getReturnType());
+    }
+
+    /**
+     *
+     * get convert method which override {@link Function#apply(Object)} .
+     * It's means that the method name is 'apply' and only have one parameter.
+     * but this method is not the same method of {@link Function#apply(Object)}
+     * @param converterClass the to get convert method
+     * @return the convert method
+     * @throws {@link BeanMappingException} for {@link BeanMappingException.ConstantMessage#DUPLICATED_CONVERT_METHOD}
+     */
     private Method getConverterMethod(Class<? extends Function> converterClass) {
         List<Method> methods = Arrays.stream(converterClass.getMethods())
                 .filter(method -> {
                     if (!method.getName().equals(CONVERTER_METHOD_NAME))
                         return false;
                     Class[] params = method.getParameterTypes();
-                    if (CONVERTER_METHOD_PARAMS.length != params.length)
-                        return false;
-                    if (Arrays.deepEquals(CONVERTER_METHOD_PARAMS, params)) {
-                        return false;
-                    } else {
-                        return true;
-                    }
+                    return CONVERTER_METHOD_PARAMS.length == params.length;
                 })
                 .collect(Collectors.toList());
-        if (methods.size() > 1) {
-            throw new BeanMappingException(DUPLICATED_CONVERT_METHOD);
+        if(methods.size() == 1){
+            return methods.get(0);
+        }else if(methods.size() > 1){
+            List<Method> methodIsOverride = methods.stream()
+                    .filter(method -> {
+                        Class[] params = method.getParameterTypes();
+                        return ! Arrays.deepEquals(params,CONVERTER_METHOD_PARAMS);
+                    })
+                    .collect(Collectors.toList());
+            if(methodIsOverride.size() == 0){
+                return methods.get(0);
+            }else if(methodIsOverride.size() == 1){
+                return methodIsOverride.get(0);
+            }else {
+                throw new BeanMappingException(DUPLICATED_CONVERT_METHOD +
+                        "; converter class is " + converterClass);
+            }
+        }else{
+            throw new BeanMappingException(NOT_CONVERT_METHOD +
+                    "; converter class is " + converterClass);
         }
-        return methods.get(0);
     }
 
     private void verifyConverterCanConstruct(Class<? extends Function> converterClass) {
