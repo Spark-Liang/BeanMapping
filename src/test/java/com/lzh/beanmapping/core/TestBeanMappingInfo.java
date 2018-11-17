@@ -1,9 +1,9 @@
-package com.lzh.beanmapping.common.util.beanmapping;
+package com.lzh.beanmapping.core;
 
 import com.lzh.beanmapping.common.PropertiesSourceObject;
-import com.lzh.beanmapping.common.annotation.DataMapping;
 import com.lzh.beanmapping.common.exception.BeanMappingException;
 import com.lzh.beanmapping.common.util.IntrospectorUtils;
+import com.lzh.beanmapping.core.annotation.DataMapping;
 import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Rule;
@@ -13,8 +13,10 @@ import org.junit.runner.RunWith;
 import org.powermock.core.classloader.annotations.PrepareForTest;
 import org.powermock.modules.junit4.PowerMockRunner;
 
+import java.beans.IntrospectionException;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
+import java.util.Objects;
 import java.util.Set;
 
 import static com.lzh.beanmapping.common.exception.BeanMappingException.ConstantMessage.DUPLICATE_DEFINE_ON_SAME_PROPERTY;
@@ -372,6 +374,32 @@ public class TestBeanMappingInfo {
         //then
     }
 
+    @Test
+    public void canReturnSameValueWhenParseTwice() throws Exception {
+        //when
+        BeanMappingInfo result1 = BeanMappingInfo.parse(NormalTargetClass.class),
+                result2 = BeanMappingInfo.parse(NormalTargetClass.class);
+
+        //then
+        Set<MappingInfoItem> infoItemsInResult1 = result1.getMappingInfos().get(TestSourceClass.class);
+        assertThat(Objects.equals(result1, result2)).isTrue();
+        doVerifyInfoItemsOnNormalTargetClassCase(infoItemsInResult1);
+    }
+
+    private void doVerifyInfoItemsOnNormalTargetClassCase(Set<MappingInfoItem> results) throws IntrospectionException {
+        assertThat(results).isNotEmpty();
+        MappingInfoItem result = results.iterator().next();
+        assertThat(result.getSourceProperty())
+                .isEqualTo(IntrospectorUtils.findPropertyByName(TestSourceClass.class, SOURCE_NAME));
+        assertThat(result.getTargetProperty())
+                .isEqualTo(IntrospectorUtils.findPropertyByName(NormalTargetClass.class, "name"));
+        assertThat(result.getToSourceConverterChain())
+                .isEqualTo(new Class[]{ConverterFromStringToIntegerForTest.class,
+                        ConverterFromIntegerToStringForTest.class});
+        assertThat(result.getToTargetConverterChain())
+                .isEqualTo(new Class[]{ConverterUsingGenericType.class});
+    }
+
     private BeanMappingInfo getSUT(Class targetClass) throws Exception{
         Constructor<BeanMappingInfo> constructor = BeanMappingInfo.class.getDeclaredConstructor(Class.class);
         constructor.setAccessible(true);
@@ -405,7 +433,22 @@ public class TestBeanMappingInfo {
         }
     }
 
+    private static class NormalTargetClass {
+        @DataMapping(sourceClass = TestSourceClass.class,
+                sourceProperty = SOURCE_NAME,
+                toSourceConverterChain = {ConverterFromStringToIntegerForTest.class,
+                        ConverterFromIntegerToStringForTest.class},
+                toTargetConverterChain = {ConverterUsingGenericType.class})
+        private String name;
 
+        public String getName() {
+            return name;
+        }
+
+        public void setName(String name) {
+            this.name = name;
+        }
+    }
 }
 
 

@@ -1,4 +1,4 @@
-package com.lzh.beanmapping.common.util.beanmapping;
+package com.lzh.beanmapping.core;
 
 import org.junit.Test;
 import org.springframework.cglib.core.KeyFactory;

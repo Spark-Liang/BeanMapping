@@ -41,5 +41,7 @@ public class BeanMappingException extends RuntimeException {
         String FIELD_NOT_IS_NOT_A_PROPERTY = "DataMapping annotation is place on a field which is not a property";
         String CAN_NOT_FOUND_PROPERTY_ON_SOURCE_CLASS = "can not find the property on the source class";
         String DUPLICATE_DEFINE_ON_SAME_PROPERTY = "duplicate define using this annotation on the same property";
+
+        String DO_CONVERT_FAILED = "convert failed ";
     }
 }

@@ -1,11 +1,12 @@
-package com.lzh.beanmapping.common.util.beanmapping;
+package com.lzh.beanmapping.core;
 
 import com.lzh.beanmapping.common.PropertiesSourceObject;
-import com.lzh.beanmapping.common.annotation.DataMapping;
 import com.lzh.beanmapping.common.exception.BeanMappingException;
 import com.lzh.beanmapping.common.util.IntrospectorUtils;
 import com.lzh.beanmapping.common.util.ReflectUtils;
 import com.lzh.beanmapping.common.util.Sets;
+import com.lzh.beanmapping.core.annotation.DataMapping;
+import org.springframework.cglib.proxy.Enhancer;
 import org.springframework.util.CollectionUtils;
 
 import java.beans.FeatureDescriptor;
@@ -14,6 +15,9 @@ import java.beans.PropertyDescriptor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.*;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Predicate;
 
 import static com.lzh.beanmapping.common.exception.BeanMappingException.ConstantMessage.*;
@@ -25,6 +29,9 @@ import static java.util.stream.Collectors.toSet;
  */
 @SuppressWarnings("WeakerAccess")
 public class BeanMappingInfo {
+
+    private static final WeakHashMap<Class, BeanMappingInfo> CACHE = new WeakHashMap<>();
+    private static ReadWriteLock CACHE_LOCK = new ReentrantReadWriteLock();
 
     private Map<Class<? extends PropertiesSourceObject>, Set<MappingInfoItem>> mappingInfos;
     private final Class targetClass;
@@ -45,23 +52,23 @@ public class BeanMappingInfo {
         }
         annotationMap.putAll(annotationMapInMethod);
 
-        Map<Class<? extends PropertiesSourceObject>,Map<String,PropertyDescriptor>> sourcePropertyCache
+        Map<Class<? extends PropertiesSourceObject>, Map<String, PropertyDescriptor>> sourcePropertyCache
                 = annotationMap.entrySet().stream()
-                    .map(entry -> entry.getKey().sourceClass())
-                    .collect(toSet())
-                    .stream()
-                    .collect(toMap(e -> e,
-                            clazz -> {
-                                try {
-                                    return Arrays.stream(IntrospectorUtils.getAllPropertyDescriptors(clazz))
-                                            .collect(toMap(PropertyDescriptor::getName, e -> e));
-                                } catch (IntrospectionException e) {
-                                    throw new BeanMappingException(SYSTEM_EXCEPTION,e);
-                                }
-                            }));
+                .map(entry -> entry.getKey().sourceClass())
+                .collect(toSet())
+                .stream()
+                .collect(toMap(e -> e,
+                        clazz -> {
+                            try {
+                                return Arrays.stream(IntrospectorUtils.getAllPropertyDescriptors(clazz))
+                                        .collect(toMap(PropertyDescriptor::getName, e -> e));
+                            } catch (IntrospectionException e) {
+                                throw new BeanMappingException(SYSTEM_EXCEPTION, e);
+                            }
+                        }));
 
         @SuppressWarnings("WeakerAccess")
-        class TempEntry{
+        class TempEntry {
             Class<? extends PropertiesSourceObject> sourceClass;
             MappingInfoItem infoItem;
         }
@@ -70,11 +77,11 @@ public class BeanMappingInfo {
                     TempEntry tempEntry = new TempEntry();
                     DataMapping dataMapping = entry.getKey();
                     tempEntry.sourceClass = dataMapping.sourceClass();
-                    tempEntry.infoItem = getMappingInfoItem(dataMapping,entry.getValue(),sourcePropertyCache);
+                    tempEntry.infoItem = getMappingInfoItem(dataMapping, entry.getValue(), sourcePropertyCache);
                     return tempEntry;
                 })
                 .collect(HashMap::new,
-                        (map,tempEntry) -> {
+                        (map, tempEntry) -> {
                             Set<MappingInfoItem> infoItems
                                     = map.computeIfAbsent(tempEntry.sourceClass, k -> new HashSet<>());
                             infoItems.add(tempEntry.infoItem);
@@ -130,17 +137,17 @@ public class BeanMappingInfo {
         infoItem.setTargetProperty(targetProperty);
 
         Class<? extends PropertiesSourceObject> sourceClass = dataMapping.sourceClass();
-        Map<String,PropertyDescriptor> descriptorMap = sourcePropertyCache.get(sourceClass);
-        if(descriptorMap != null){
+        Map<String, PropertyDescriptor> descriptorMap = sourcePropertyCache.get(sourceClass);
+        if (descriptorMap != null) {
             PropertyDescriptor sourceProperty = descriptorMap.get(dataMapping.sourceProperty());
-            if(sourceProperty != null){
+            if (sourceProperty != null) {
                 infoItem.setSourceProperty(sourceProperty);
-            }else{
+            } else {
                 throw new BeanMappingException(CAN_NOT_FOUND_PROPERTY_ON_SOURCE_CLASS +
                         "; source class is " + sourceClass +
                         " source property is " + dataMapping.sourceProperty());
             }
-        }else {
+        } else {
             throw new BeanMappingException(CAN_NOT_FOUND_PROPERTY_ON_SOURCE_CLASS +
                     "; source class is " + sourceClass);
         }
@@ -154,7 +161,7 @@ public class BeanMappingInfo {
         return infoItem;
     }
 
-    private Map<DataMapping,PropertyDescriptor> findAllAnnotationInFields(Class targetClass) {
+    private Map<DataMapping, PropertyDescriptor> findAllAnnotationInFields(Class targetClass) {
         Predicate<Field> predicate =
                 field -> null != field.getDeclaredAnnotation(DataMapping.class);
         Field[] fields = ReflectUtils.getAllDeclaredFields(targetClass, predicate);
@@ -164,13 +171,13 @@ public class BeanMappingInfo {
                     .collect(toMap(FeatureDescriptor::getName, e -> e));
             return Arrays.stream(fields)
                     .peek(field -> {
-                        if(!descriptorMap.containsKey(field.getName())){
+                        if (!descriptorMap.containsKey(field.getName())) {
                             throw new BeanMappingException(FIELD_NOT_IS_NOT_A_PROPERTY +
                                     "; field is " + field);
                         }
                     })
                     .collect(toMap(field -> field.getDeclaredAnnotation(DataMapping.class)
-                            ,field -> descriptorMap.get(field.getName())));
+                            , field -> descriptorMap.get(field.getName())));
         } catch (IntrospectionException e) {
             throw new BeanMappingException(SYSTEM_EXCEPTION +
                     "; reason is " + e, e);
@@ -179,9 +186,61 @@ public class BeanMappingInfo {
 
 
     public static BeanMappingInfo parse(Class clazz) {
-        BeanMappingInfo beanMappingInfo = new BeanMappingInfo(clazz);
-        beanMappingInfo.parseMappingInfo();
-        return beanMappingInfo;
+        if (Object.class.equals(clazz)) {
+            return null;
+        }
+
+        Lock readLock = CACHE_LOCK.readLock();
+        try {
+            readLock.lock();
+            BeanMappingInfo mappingInfo = findMappingInfoInCache(clazz);
+            if (mappingInfo != null) {
+                return mappingInfo;
+            }
+        } finally {
+            readLock.unlock();
+        }
+
+        return createInstance(clazz);
+    }
+
+    private static BeanMappingInfo createInstance(Class clazz) {
+        BeanMappingInfo mappingInfo = new BeanMappingInfo(clazz);
+        mappingInfo.parseMappingInfo();
+
+        Lock writeLock = CACHE_LOCK.writeLock();
+        try {
+            writeLock.lock();
+
+            mappingInfo = CACHE.merge(clazz, mappingInfo,
+                    (valueInCache, valueToPut) -> valueInCache);
+        } finally {
+            writeLock.unlock();
+        }
+        return mappingInfo;
+    }
+
+    /**
+     * check if the class in the cache.<br>
+     * If not exists than check this class is Enhancer or not,if this class is enhance by CGlib than find the super class.
+     * if the super class is not enhance by CGlib and exists in cache than return the cache value.If not exists than return null;
+     *
+     * @param clazz the key of the cache
+     * @return {@link BeanMappingInfo}
+     */
+    private static BeanMappingInfo findMappingInfoInCache(Class clazz) {
+        Class currentClass = clazz;
+        while (!Object.class.equals(currentClass)) {
+            BeanMappingInfo mappingInfo = CACHE.get(currentClass);
+            if (mappingInfo != null) {
+                return mappingInfo;
+            }
+            if (!Enhancer.isEnhanced(clazz)) {
+                return null;
+            }
+            currentClass = clazz.getSuperclass();
+        }
+        return null;
     }
 
     public Map<Class<? extends PropertiesSourceObject>, Set<MappingInfoItem>> getMappingInfos() {
@@ -192,3 +251,4 @@ public class BeanMappingInfo {
         return targetClass;
     }
 }
+

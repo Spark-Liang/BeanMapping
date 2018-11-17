@@ -1,4 +1,4 @@
-package com.lzh.beanmapping.common.util.beanmapping;
+package com.lzh.beanmapping.core;
 
 import com.lzh.beanmapping.common.PropertiesSourceObject;
 import com.lzh.beanmapping.common.exception.BeanMappingException;
@@ -6,6 +6,7 @@ import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.ExpectedException;
+import org.mockito.Mockito;
 
 import java.beans.IntrospectionException;
 import java.util.Date;
@@ -13,7 +14,8 @@ import java.util.function.Function;
 
 import static com.lzh.beanmapping.common.exception.BeanMappingException.ConstantMessage.*;
 import static com.lzh.beanmapping.common.util.IntrospectorUtils.getPropertyByName;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.verify;
 
 @SuppressWarnings({"unused", "unchecked"})
 public class MappingInfoItemTest {
@@ -25,7 +27,7 @@ public class MappingInfoItemTest {
 
     @Before
     public void setUp() {
-        SUT = spy(new MappingInfoItem());
+        SUT = Mockito.spy(new MappingInfoItem());
     }
 
     /**
@@ -471,7 +473,7 @@ public class MappingInfoItemTest {
         SUT.verify();
 
         //then
-        verify(SUT, atLeastOnce()).verifyCoverterChain(converters, SUT.getTargetProperty(), SUT.getSourceProperty());
+        verify(SUT, atLeastOnce()).verifyConverterChain(converters, SUT.getTargetProperty(), SUT.getSourceProperty());
     }
 
 

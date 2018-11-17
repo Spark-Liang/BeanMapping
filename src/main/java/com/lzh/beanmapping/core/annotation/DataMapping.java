@@ -1,4 +1,4 @@
-package com.lzh.beanmapping.common.annotation;
+package com.lzh.beanmapping.core.annotation;
 
 import com.lzh.beanmapping.common.PropertiesSourceObject;
 

@@ -1,4 +1,4 @@
-package com.lzh.beanmapping.common.util.beanmapping;
+package com.lzh.beanmapping.core;
 
 import java.util.function.Function;
 
@@ -98,3 +98,4 @@ class ConverterUsingGenericTypeButNotBoundByObject<T extends String> implements 
         return o;
     }
 }
+

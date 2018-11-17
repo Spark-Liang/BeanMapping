@@ -1,26 +1,23 @@
 package com.lzh.beanmapping.common.converter;
 
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.function.Function;
 
+import static com.lzh.beanmapping.common.converter.DefaultDateFormat.DEFAULT_DATE_FORMAT;
+
 public class StringToDateConverter implements Function<String, Date> {
 
-    public StringToDateConverter(){}
+    private SimpleDateFormat formatter = new SimpleDateFormat(DEFAULT_DATE_FORMAT);
 
     @Override
     public Date apply(String string) {
-        return new Date(string);
+        try {
+            return formatter.parse(string);
+        } catch (ParseException e) {
+            throw new RuntimeException(e);
+        }
     }
 
-    @Override
-    public int hashCode() {
-        return getClass().hashCode();
-    }
-
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
-        return true;
-    }
 }

@@ -1,4 +1,4 @@
-package com.lzh.beanmapping.common.util.beanmapping;
+package com.lzh.beanmapping.core;
 
 import com.lzh.beanmapping.common.exception.BeanMappingException;
 import com.lzh.beanmapping.common.util.ArrayUtils;
@@ -11,10 +11,8 @@ import java.lang.reflect.Type;
 import java.lang.reflect.TypeVariable;
 import java.util.Arrays;
 import java.util.Iterator;
-import java.util.List;
 import java.util.Objects;
 import java.util.function.Function;
-import java.util.stream.Collectors;
 
 import static com.lzh.beanmapping.common.exception.BeanMappingException.ConstantMessage.*;
 
@@ -23,8 +21,6 @@ import static com.lzh.beanmapping.common.exception.BeanMappingException.Constant
  */
 @SuppressWarnings({"JavaDoc", "WeakerAccess"})
 public class MappingInfoItem {
-    private static final String CONVERTER_METHOD_NAME = "apply";
-    private static final Class[] CONVERTER_METHOD_PARAMS = new Class[]{Object.class};
 
     private PropertyDescriptor sourceProperty;
     private PropertyDescriptor targetProperty;
@@ -47,8 +43,8 @@ public class MappingInfoItem {
      */
     void verify() {
         verifyPropertyDescriptor();
-        verifyCoverterChain(toSourceConverterChain,targetProperty,sourceProperty);
-        verifyCoverterChain(toTargetConverterChain,sourceProperty,targetProperty);
+        verifyConverterChain(toSourceConverterChain, targetProperty, sourceProperty);
+        verifyConverterChain(toTargetConverterChain, sourceProperty, targetProperty);
     }
 
     private void verifyPropertyDescriptor() {
@@ -96,9 +92,9 @@ public class MappingInfoItem {
      * @param toProperty the property that chain will return
      */
     @SuppressWarnings("unchecked")
-    void verifyCoverterChain(Class<? extends Function>[] converterChain,
-                                     PropertyDescriptor fromProperty, 
-                                     PropertyDescriptor toProperty) {
+    void verifyConverterChain(Class<? extends Function>[] converterChain,
+                              PropertyDescriptor fromProperty,
+                              PropertyDescriptor toProperty) {
         if (ArrayUtils.isNotEmpty(converterChain)) {
             Class<? extends Function> currentConverterClass;
             Class typeToBeProvided,
@@ -111,13 +107,13 @@ public class MappingInfoItem {
             typeToBeProvided = fromProperty.getPropertyType();
             currentConverterClass = skipToNextConverterThatWillChangeType(iterator);
             if (currentConverterClass != null) {
-                typeToBeAssigned = getConverterMethodInputType(currentConverterClass);
+                typeToBeAssigned = ConverterUtils.getConverterMethodInputType(currentConverterClass);
                 if (!typeToBeAssigned.isAssignableFrom(typeToBeProvided)) {
                     throw new BeanMappingException(CONVERTER_CHAIN_NOT_MATCH_INPUT_TYPE +
                             ";\n type to be provided is " + typeToBeProvided +
                             ", type to be assigned is " + typeToBeAssigned);
                 }
-                typeToBeProvided = getConverterMethodReturnType(currentConverterClass);
+                typeToBeProvided = ConverterUtils.getConverterMethodReturnType(currentConverterClass);
 
                 //do verify on converter chain body
                 while (iterator.hasNext()) {
@@ -125,7 +121,7 @@ public class MappingInfoItem {
                     if (currentConverterClass == null) {
                         continue;
                     }
-                    typeToBeAssigned = getConverterMethodInputType(currentConverterClass);
+                    typeToBeAssigned = ConverterUtils.getConverterMethodInputType(currentConverterClass);
 
                     if (!typeToBeAssigned.isAssignableFrom(typeToBeProvided)) {
                         throw new BeanMappingException(CONVERTER_NOT_MATCH_PREVIOUS_TYPE +
@@ -134,7 +130,7 @@ public class MappingInfoItem {
                                 "\n current converter is " + currentConverterClass);
                     }
 
-                    typeToBeProvided = getConverterMethodReturnType(currentConverterClass);
+                    typeToBeProvided = ConverterUtils.getConverterMethodReturnType(currentConverterClass);
                 }
             }
 
@@ -148,19 +144,12 @@ public class MappingInfoItem {
         }
     }
 
-    private Class getConverterMethodReturnType(Class<? extends Function> currentConverterClass) {
-        return getConverterMethod(currentConverterClass).getReturnType();
-    }
-
-    private Class getConverterMethodInputType(Class<? extends Function> currentConverterClass) {
-        return getConverterMethod(currentConverterClass).getParameterTypes()[0];
-    }
 
     private Class skipToNextConverterThatWillChangeType(Iterator<Class<? extends Function>> iterator) {
         Class<? extends Function> currentConverterClass = null;
         while (iterator.hasNext()) {
             currentConverterClass = iterator.next();
-            Method convertMethod = getConverterMethod(currentConverterClass);
+            Method convertMethod = ConverterUtils.getConverterMethod(currentConverterClass);
             Type genericInputType = convertMethod.getGenericParameterTypes()[0],
                     genericReturnType = convertMethod.getGenericReturnType();
             if (genericInputType == null) {
@@ -191,47 +180,6 @@ public class MappingInfoItem {
         }
 
         return currentConverterClass;
-    }
-
-    /**
-     *
-     * get convert method which override {@link Function#apply(Object)} .
-     * It's means that the method name is 'apply' and only have one parameter.
-     * but this method is not the same method of {@link Function#apply(Object)}
-     * @param converterClass the to get convert method
-     * @return the convert method
-     * @throws {@link BeanMappingException} for {@link BeanMappingException.ConstantMessage#DUPLICATED_CONVERT_METHOD}
-     */
-    private Method getConverterMethod(Class<? extends Function> converterClass) {
-        List<Method> methods = Arrays.stream(converterClass.getMethods())
-                .filter(method -> {
-                    if (!method.getName().equals(CONVERTER_METHOD_NAME))
-                        return false;
-                    Class[] params = method.getParameterTypes();
-                    return CONVERTER_METHOD_PARAMS.length == params.length;
-                })
-                .collect(Collectors.toList());
-        if(methods.size() == 1){
-            return methods.get(0);
-        }else if(methods.size() > 1){
-            List<Method> methodIsOverride = methods.stream()
-                    .filter(method -> {
-                        Class[] params = method.getParameterTypes();
-                        return ! Arrays.deepEquals(params,CONVERTER_METHOD_PARAMS);
-                    })
-                    .collect(Collectors.toList());
-            if(methodIsOverride.size() == 0){
-                return methods.get(0);
-            }else if(methodIsOverride.size() == 1){
-                return methodIsOverride.get(0);
-            }else {
-                throw new BeanMappingException(DUPLICATED_CONVERT_METHOD +
-                        "; converter class is " + converterClass);
-            }
-        }else{
-            throw new BeanMappingException(NOT_CONVERT_METHOD +
-                    "; converter class is " + converterClass);
-        }
     }
 
     private void verifyConverterCanConstruct(Class<? extends Function> converterClass) {
@@ -312,3 +260,4 @@ public class MappingInfoItem {
         this.toSourceConverterChain = toSourceConverterChain;
     }
 }
+
