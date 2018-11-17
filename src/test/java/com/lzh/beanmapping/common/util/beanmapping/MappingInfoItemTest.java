@@ -13,12 +13,9 @@ import java.util.function.Function;
 
 import static com.lzh.beanmapping.common.exception.BeanMappingException.ConstantMessage.*;
 import static com.lzh.beanmapping.common.util.IntrospectorUtils.getPropertyByName;
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.atLeastOnce;
-import static org.mockito.Mockito.spy;
-import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.*;
 
-@SuppressWarnings({"unused","unchecked"})
+@SuppressWarnings({"unused", "unchecked"})
 public class MappingInfoItemTest {
 
     @Rule
@@ -71,7 +68,9 @@ public class MappingInfoItemTest {
         //given
         processSUTToNormalCase();
         Class<? extends Function>[] converters = new Class[]{
-                ConverterFromStringToIntegerForTest.class, ConverterFromIntegerToStringForTest.class
+                ConverterFromStringToIntegerForTest.class
+                , ConverterFromIntegerToStringForTest.class
+                , ConverterWithDefaultConstructor.class
         };
         SUT.setToTargetConverterChain(converters);
 
@@ -259,7 +258,7 @@ public class MappingInfoItemTest {
      */
     @Test
     public void doThrowExceptionWhenNotHaveConverterAndNotMatchBetweenSourceAndTargetType()
-    throws Exception{
+            throws Exception {
         //given
         expectedException.expect(BeanMappingException.class);
         expectedException.expectMessage(PROPERTY_TYPE_IS_DIFFERENT);
@@ -290,7 +289,7 @@ public class MappingInfoItemTest {
      */
     @Test
     public void doThrowExceptionWhenOneOfConverterInToTargetChainNotHaveConstruct()
-            throws Exception{
+            throws Exception {
         //given
         expectedException.expect(BeanMappingException.class);
         expectedException.expectMessage(CONVERTER_NOT_HAS_DEFAULT_CONSTRUCTOR);
@@ -313,7 +312,7 @@ public class MappingInfoItemTest {
      */
     @Test
     public void doThrowExceptionWhenOneOfConverterInToTargetChainCanNotConstruct()
-            throws Exception{
+            throws Exception {
         //given
         expectedException.expect(BeanMappingException.class);
         expectedException.expectMessage(CONVERTER_CAN_NOT_CONSTRUCT);
@@ -336,7 +335,7 @@ public class MappingInfoItemTest {
      */
     @Test
     public void doThrowExceptionWhenOneOfConverterInToTargetChainHasDuplicatedConverterMethod()
-            throws Exception{
+            throws Exception {
         //given
         expectedException.expect(BeanMappingException.class);
         expectedException.expectMessage(DUPLICATED_CONVERT_METHOD);
@@ -359,7 +358,7 @@ public class MappingInfoItemTest {
      */
     @Test
     public void doThrowExceptionWhenOneOfConverterInToTargetChainNotMatchPreviousReturnType()
-    throws Exception{
+            throws Exception {
         //given
         expectedException.expect(BeanMappingException.class);
         expectedException.expectMessage(CONVERTER_NOT_MATCH_PREVIOUS_TYPE);
@@ -382,7 +381,7 @@ public class MappingInfoItemTest {
      */
     @Test
     public void doThrowExceptionWhenToTargetChainNotMatchTargetType()
-    throws Exception{
+            throws Exception {
         //given
         expectedException.expect(BeanMappingException.class);
         expectedException.expectMessage(CONVERTER_CHAIN_NOT_MATCH_RETURN_TYPE);
@@ -407,7 +406,7 @@ public class MappingInfoItemTest {
      */
     @Test
     public void doThrowExceptionWhenToTargetChainNotMatchSourceType()
-    throws Exception{
+            throws Exception {
         //given
         expectedException.expect(BeanMappingException.class);
         expectedException.expectMessage(CONVERTER_CHAIN_NOT_MATCH_INPUT_TYPE);
@@ -427,11 +426,34 @@ public class MappingInfoItemTest {
 
     /**
      * Test {@link MappingInfoItem#verify()}
-     * this test assert that the toSourceChain will do verify during the {@link MappingInfoItem#verify()} is call
-     * @throws Exception
+     * when a converter using the generic type in convert method ,but it's bound of generic type
+     * is not Object.class.
      */
     @Test
-    public void shouldDoVerifyOnToSourceChain() throws Exception{
+    public void throwExceptionWhenOneConverterUseGenericTypeButTheBounderIsNotObject()
+            throws Exception {
+        //given
+        expectedException.expect(BeanMappingException.class);
+        expectedException.expectMessage(GENERIC_TYPE_OF_CONVERTER_IS_NOT_OBJECT);
+
+        processSUTToNormalCase();
+
+        Class<? extends Function>[] converters = new Class[]{
+                ConverterUsingGenericTypeButNotBoundByObject.class
+        };
+        SUT.setToTargetConverterChain(converters);
+
+        //when
+        SUT.verify();
+    }
+
+    /**
+     * Test {@link MappingInfoItem#verify()}
+     * this test assert that the toSourceChain will do verify during the {@link MappingInfoItem#verify()} is call
+     *
+     */
+    @Test
+    public void shouldDoVerifyOnToSourceChain() throws Exception {
         //given
         expectedException.expect(BeanMappingException.class);
         expectedException.expectMessage(CONVERTER_CHAIN_NOT_MATCH_INPUT_TYPE);
@@ -449,12 +471,11 @@ public class MappingInfoItemTest {
         SUT.verify();
 
         //then
-        verify(SUT,atLeastOnce()).verifyCoverterChain(converters,SUT.getTargetProperty(),SUT.getSourceProperty());
+        verify(SUT, atLeastOnce()).verifyCoverterChain(converters, SUT.getTargetProperty(), SUT.getSourceProperty());
     }
 
 
-
-    public static class TestSourceClass {
+    private static class TestSourceClass {
         private String sourceName;
 
         private Date sourceDate;
@@ -473,70 +494,6 @@ public class MappingInfoItemTest {
 
         public void setSourceDate(Date sourceDate) {
             this.sourceDate = sourceDate;
-        }
-    }
-
-    public static class ConverterWithoutConstructer implements Function<String,String> {
-
-        public ConverterWithoutConstructer(String value){
-            value = null;
-        }
-
-        @Override
-        public String apply(String o) {
-            return o;
-        }
-
-    }
-
-    public static class ConverterCanNotConstruct implements Function<String,String> {
-
-        public ConverterCanNotConstruct(){
-            throw new RuntimeException();
-        }
-
-        @Override
-        public String apply(String o) {
-            return o;
-        }
-    }
-
-    interface FakeFunction {
-        String apply(Integer o);
-    }
-
-    public static class ConverterWithDuplicatedImplement implements Function<String,Integer>,FakeFunction {
-
-        public ConverterWithDuplicatedImplement(){}
-
-        @Override
-        public Integer apply(String o) {
-            return 1;
-        }
-
-        @Override
-        public String apply(Integer o) {
-            return null;
-        }
-    }
-
-    private static class ConverterFromStringToIntegerForTest implements Function<String,Integer> {
-
-        public ConverterFromStringToIntegerForTest(){}
-
-        @Override
-        public Integer apply(String o) {
-            return 1;
-        }
-    }
-
-    private static class ConverterFromIntegerToStringForTest implements Function<Integer,String> {
-
-        public ConverterFromIntegerToStringForTest (){}
-
-        @Override
-        public String  apply(Integer o) {
-            return "";
         }
     }
 

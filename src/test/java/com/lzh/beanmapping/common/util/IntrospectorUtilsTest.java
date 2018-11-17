@@ -14,7 +14,8 @@ import java.beans.PropertyDescriptor;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.any;
-import static org.powermock.api.mockito.PowerMockito.*;
+import static org.powermock.api.mockito.PowerMockito.mockStatic;
+import static org.powermock.api.mockito.PowerMockito.when;
 
 
 @RunWith(PowerMockRunner.class)
@@ -109,6 +110,7 @@ public class IntrospectorUtilsTest {
         assertThat(result).isNull();
     }
 
+    @SuppressWarnings("unused")
     static class TestClass {
         private String name;
 
@@ -121,7 +123,7 @@ public class IntrospectorUtilsTest {
         }
     }
 
-    static class TestSubClass extends TestClass {
+    private static class TestSubClass extends TestClass {
 
     }
 }

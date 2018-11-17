@@ -7,6 +7,8 @@ import org.springframework.cglib.core.Constants;
 import java.beans.PropertyDescriptor;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
+import java.lang.reflect.Type;
+import java.lang.reflect.TypeVariable;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
@@ -19,6 +21,7 @@ import static com.lzh.beanmapping.common.exception.BeanMappingException.Constant
 /**
  * To describe all the information about bean mapping for one property
  */
+@SuppressWarnings({"JavaDoc", "WeakerAccess"})
 public class MappingInfoItem {
     private static final String CONVERTER_METHOD_NAME = "apply";
     private static final Class[] CONVERTER_METHOD_PARAMS = new Class[]{Object.class};
@@ -28,8 +31,6 @@ public class MappingInfoItem {
     private Class<? extends Function>[] toTargetConverterChain;
     private Class<? extends Function>[] toSourceConverterChain;
 
-    public MappingInfoItem() {
-    }
 
     /**
      * verify this instance of {@link MappingInfoItem} is validated
@@ -44,7 +45,7 @@ public class MappingInfoItem {
      *
      * @throws BeanMappingException
      */
-    public void verify() {
+    void verify() {
         verifyPropertyDescriptor();
         verifyCoverterChain(toSourceConverterChain,targetProperty,sourceProperty);
         verifyCoverterChain(toTargetConverterChain,sourceProperty,targetProperty);
@@ -87,70 +88,109 @@ public class MappingInfoItem {
      *     <li>validate the input type of the chain match the type of fromProperty</li>
      *     <li>the input type of each converter must match the return type of the previous converter</li>
      *     <li>validate the output type of the chain match the type of toProperty</li>
+     *     <li>will ignore all the converter that have the generic type convert method
+     *     , and this method have the same generic type in input type and return type</li>
      * </ul>
      * @param converterChain the convert chain to be verify
      * @param fromProperty the property that to be convert by the chain
      * @param toProperty the property that chain will return
      */
+    @SuppressWarnings("unchecked")
     void verifyCoverterChain(Class<? extends Function>[] converterChain,
                                      PropertyDescriptor fromProperty, 
                                      PropertyDescriptor toProperty) {
         if (ArrayUtils.isNotEmpty(converterChain)) {
-            Class<? extends Function> previousConverterClass = null, currentConverterClass;
+            Class<? extends Function> currentConverterClass;
+            Class typeToBeProvided,
+                    typeToBeAssigned;
+
             Iterator<Class<? extends Function>> iterator = ArrayUtils.iterator(converterChain);
 
-            if (iterator.hasNext()) {
-                currentConverterClass = iterator.next();
-                verifyConverterCanConstruct(currentConverterClass);
-                Method convertMethod = getConverterMethod(currentConverterClass);
-                Class typeToBeProvided = fromProperty.getPropertyType(),
-                        typeToBeAssigned = convertMethod.getParameterTypes()[0];
-            if(!typeToBeAssigned.isAssignableFrom(typeToBeProvided)){
+            //do verify on 'fromProperty' can assign to chain's input type
+            //if not have converter will change type than directly to verify the type of fromProperty and target property
+            typeToBeProvided = fromProperty.getPropertyType();
+            currentConverterClass = skipToNextConverterThatWillChangeType(iterator);
+            if (currentConverterClass != null) {
+                typeToBeAssigned = getConverterMethodInputType(currentConverterClass);
+                if (!typeToBeAssigned.isAssignableFrom(typeToBeProvided)) {
                     throw new BeanMappingException(CONVERTER_CHAIN_NOT_MATCH_INPUT_TYPE +
-                            "; type to be assigned is " + typeToBeAssigned +
-                            " type to provide is " + typeToBeProvided);
+                            ";\n type to be provided is " + typeToBeProvided +
+                            ", type to be assigned is " + typeToBeAssigned);
                 }
+                typeToBeProvided = getConverterMethodReturnType(currentConverterClass);
 
+                //do verify on converter chain body
                 while (iterator.hasNext()) {
-                    Class nextNotGenericTypeConverterClass = getNextNotGenericTypeConverterClass(iterator);
-                    if(nextNotGenericTypeConverterClass == null){
+                    currentConverterClass = skipToNextConverterThatWillChangeType(iterator);
+                    if (currentConverterClass == null) {
                         continue;
                     }
+                    typeToBeAssigned = getConverterMethodInputType(currentConverterClass);
 
-                    previousConverterClass = currentConverterClass;
-                    currentConverterClass = nextNotGenericTypeConverterClass;
-                    verifyConverterCanConstruct(currentConverterClass);
-
-                    Method previousConvertMethod = getConverterMethod(previousConverterClass),
-                            currentConvertMethod = getConverterMethod(currentConverterClass);
-
-                    if (!canReturnTypeAssignToInputType(previousConvertMethod, currentConvertMethod)) {
+                    if (!typeToBeAssigned.isAssignableFrom(typeToBeProvided)) {
                         throw new BeanMappingException(CONVERTER_NOT_MATCH_PREVIOUS_TYPE +
-                                "; previous converter is " + previousConverterClass +
-                                " current converter is " + currentConverterClass);
+                                ";\n type to be provided is " + typeToBeProvided +
+                                ", type to be assigned is " + typeToBeAssigned +
+                                "\n current converter is " + currentConverterClass);
                     }
-                }
 
-                convertMethod = getConverterMethod(currentConverterClass);
-                Class typeOfPropertyToAssign = toProperty.getPropertyType(),
-                        providePropertyType = convertMethod.getReturnType();
-                if(! typeOfPropertyToAssign.isAssignableFrom(providePropertyType)){
-                    throw new BeanMappingException(CONVERTER_CHAIN_NOT_MATCH_RETURN_TYPE +
-                            "; type to be assigned is " + typeOfPropertyToAssign +
-                            " type to provide is " + providePropertyType);
+                    typeToBeProvided = getConverterMethodReturnType(currentConverterClass);
                 }
+            }
+
+            //do verify on 'toProperty' can be assign from chain's return type
+            typeToBeAssigned = toProperty.getPropertyType();
+            if (!typeToBeAssigned.isAssignableFrom(typeToBeProvided)) {
+                throw new BeanMappingException(CONVERTER_CHAIN_NOT_MATCH_RETURN_TYPE +
+                        ";\n type to be provided is " + typeToBeProvided +
+                        ", type to be assigned is " + typeToBeAssigned);
             }
         }
     }
 
-    private Class getNextNotGenericTypeConverterClass(Iterator<Class<? extends Function>> iterator) {
-        //TODD
-        return iterator.next();
+    private Class getConverterMethodReturnType(Class<? extends Function> currentConverterClass) {
+        return getConverterMethod(currentConverterClass).getReturnType();
     }
 
-    private boolean canReturnTypeAssignToInputType(Method method1, Method method2) {
-        return method2.getParameterTypes()[0]
-                .isAssignableFrom(method1.getReturnType());
+    private Class getConverterMethodInputType(Class<? extends Function> currentConverterClass) {
+        return getConverterMethod(currentConverterClass).getParameterTypes()[0];
+    }
+
+    private Class skipToNextConverterThatWillChangeType(Iterator<Class<? extends Function>> iterator) {
+        Class<? extends Function> currentConverterClass = null;
+        while (iterator.hasNext()) {
+            currentConverterClass = iterator.next();
+            Method convertMethod = getConverterMethod(currentConverterClass);
+            Type genericInputType = convertMethod.getGenericParameterTypes()[0],
+                    genericReturnType = convertMethod.getGenericReturnType();
+            if (genericInputType == null) {
+                throw new BeanMappingException(SYSTEM_EXCEPTION +
+                        "\n generic input type of " + convertMethod + " is null");
+            }
+            if (genericReturnType == null) {
+                throw new BeanMappingException(SYSTEM_EXCEPTION +
+                        "\n generic return type of " + convertMethod + " is null");
+            }
+            if (genericInputType instanceof TypeVariable
+                    && genericReturnType instanceof TypeVariable
+                    && genericInputType.equals(genericReturnType)) {
+
+                if (!Object.class.equals(convertMethod.getReturnType())) {
+                    throw new BeanMappingException(GENERIC_TYPE_OF_CONVERTER_IS_NOT_OBJECT);
+                }
+                verifyConverterCanConstruct(currentConverterClass);
+
+                //skip this converter
+                currentConverterClass = null;
+            } else {
+                break;
+            }
+        }
+        if (currentConverterClass != null) {
+            verifyConverterCanConstruct(currentConverterClass);
+        }
+
+        return currentConverterClass;
     }
 
     /**
@@ -195,25 +235,21 @@ public class MappingInfoItem {
     }
 
     private void verifyConverterCanConstruct(Class<? extends Function> converterClass) {
-        Constructor<? extends Function> defaultConstruct = null;
         try {
-            defaultConstruct = converterClass.getConstructor(Constants.EMPTY_CLASS_ARRAY);
-            Function converterInstance = null;
+            Constructor<? extends Function> defaultConstruct = converterClass.getConstructor(Constants.EMPTY_CLASS_ARRAY);
             try {
-                converterInstance = defaultConstruct.newInstance();
+                //noinspection JavaReflectionInvocation
+                defaultConstruct.newInstance();
             } catch (Throwable e) {
                 throw new BeanMappingException(CONVERTER_CAN_NOT_CONSTRUCT +
                         "; converter class is " + converterClass, e);
-            }
-            if (converterInstance == null) {
-                throw new BeanMappingException(CONVERTER_CAN_NOT_CONSTRUCT +
-                        "; converter class is " + converterClass);
             }
         } catch (NoSuchMethodException e) {
             throw new BeanMappingException(CONVERTER_NOT_HAS_DEFAULT_CONSTRUCTOR +
                     "; converter class is " + converterClass, e);
         }
     }
+
 
     @Override
     public boolean equals(Object o) {

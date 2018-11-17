@@ -28,6 +28,8 @@ public class SingleMethodClassGeneratorTest {
         Assertions.assertThat(result).isEqualTo(1);
     }
 
+
+    @SuppressWarnings("WeakerAccess")
     public static abstract class TargetClass {
 
         public abstract int convert(String something);
@@ -73,15 +75,6 @@ class SingleMethodClassGeneratorForTest extends SingleMethodClassGenerator {
         emitter.load_arg(something_arg_ind);
         emitter.invoke_constructor(IntegerType, constructor_signature);
         emitter.invoke_virtual(IntegerType, intValue_signature);
-        for (int i = 0; i < Short.MAX_VALUE; i++) {
-            try {
-                emitter.dup();
-            } catch (Exception e) {
-                System.out.println("current index :" + i);
-                e.printStackTrace();
-                throw e;
-            }
-        }
         emitter.return_value();
 
         emitter.end_method();

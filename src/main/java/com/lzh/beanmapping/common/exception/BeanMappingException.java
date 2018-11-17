@@ -34,10 +34,12 @@ public class BeanMappingException extends RuntimeException {
         String NOT_CONVERT_METHOD = "the given converter does not have the convert method";
         String DUPLICATED_CONVERT_METHOD = "duplicate convert method names 'apply' in this class";
         String CONVERTER_NOT_MATCH_PREVIOUS_TYPE ="the input type of the converter can not be assigned from the return type of previous converter";
-        String CONVERTER_CHAIN_NOT_MATCH_INPUT_TYPE ="the input type of the converter can not be assigned from the return type of property get method";
-        String CONVERTER_CHAIN_NOT_MATCH_RETURN_TYPE ="the output type of the converter can not be assigned from the return type of property set method";
+        String CONVERTER_CHAIN_NOT_MATCH_INPUT_TYPE = "the input type of the converter chain can not be assigned from the return parameter of property get method";
+        String CONVERTER_CHAIN_NOT_MATCH_RETURN_TYPE = "the output type of the converter chain can assigned to the input parameter of property set method";
+        String GENERIC_TYPE_OF_CONVERTER_IS_NOT_OBJECT = "the converter use generic type on convert method, but the signature type is not Object.class  ";
 
         String FIELD_NOT_IS_NOT_A_PROPERTY = "DataMapping annotation is place on a field which is not a property";
         String CAN_NOT_FOUND_PROPERTY_ON_SOURCE_CLASS = "can not find the property on the source class";
+        String DUPLICATE_DEFINE_ON_SAME_PROPERTY = "duplicate define using this annotation on the same property";
     }
 }

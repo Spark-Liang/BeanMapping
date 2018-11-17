@@ -2,15 +2,19 @@ package com.lzh.beanmapping.common.annotation;
 
 import com.lzh.beanmapping.common.PropertiesSourceObject;
 
-import java.lang.annotation.*;
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
 import java.util.function.Function;
 
 /**
- * This annotation is used to define the properties mapping between POJO and PO.
+ * This annotation is used to define the properties mapping between POJO and PO.<br>
  * If you want to config the relationship between the property in the POJO and properties provider,
  * you need to place this annotation on the field or the set method.
  * And place on the set method is recommend.Because you need to make sure field name is
- * same as the property name
+ * same as the property name.<br>
+ * If this annotation place in other method it will be ignore.
  */
 @Retention(RetentionPolicy.RUNTIME)
 @Target({ElementType.FIELD,ElementType.METHOD})

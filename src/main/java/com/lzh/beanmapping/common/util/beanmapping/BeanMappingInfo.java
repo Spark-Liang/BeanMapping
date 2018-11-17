@@ -5,27 +5,26 @@ import com.lzh.beanmapping.common.annotation.DataMapping;
 import com.lzh.beanmapping.common.exception.BeanMappingException;
 import com.lzh.beanmapping.common.util.IntrospectorUtils;
 import com.lzh.beanmapping.common.util.ReflectUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import com.lzh.beanmapping.common.util.Sets;
+import org.springframework.util.CollectionUtils;
 
 import java.beans.FeatureDescriptor;
 import java.beans.IntrospectionException;
 import java.beans.PropertyDescriptor;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Predicate;
 
-import static com.lzh.beanmapping.common.exception.BeanMappingException.ConstantMessage.CAN_NOT_FOUND_PROPERTY_ON_SOURCE_CLASS;
-import static com.lzh.beanmapping.common.exception.BeanMappingException.ConstantMessage.FIELD_NOT_IS_NOT_A_PROPERTY;
-import static com.lzh.beanmapping.common.exception.BeanMappingException.ConstantMessage.SYSTEM_EXCEPTION;
-import static java.util.stream.Collectors.*;
+import static com.lzh.beanmapping.common.exception.BeanMappingException.ConstantMessage.*;
+import static java.util.stream.Collectors.toMap;
+import static java.util.stream.Collectors.toSet;
 
 /**
  * This class is used to describe Mapping info of a POJO
  */
+@SuppressWarnings("WeakerAccess")
 public class BeanMappingInfo {
-    private static Logger logger = LoggerFactory.getLogger(BeanMappingInfo.class);
 
     private Map<Class<? extends PropertiesSourceObject>, Set<MappingInfoItem>> mappingInfos;
     private final Class targetClass;
@@ -35,13 +34,16 @@ public class BeanMappingInfo {
     }
 
     private void parseMappingInfo() {
-//        Map<Class<? extends PropertiesSourceObject>, List<Field>> fieldMap = filterField(targetClass);
-//        mappingInfos
-//                = fieldMap.entrySet().stream()
-//                .collect(toMap(entry -> entry.getKey()
-//                        , entry -> parserMappingInfos(entry.getKey(), entry.getValue())));
-        Map<DataMapping,PropertyDescriptor> annotationMap = new HashMap<>();
-        annotationMap.putAll(findAllAnnotationInFields(targetClass));
+        Map<DataMapping, PropertyDescriptor> annotationMap = findAllAnnotationInFields(targetClass);
+
+        Map<DataMapping, PropertyDescriptor> annotationMapInMethod = findAllAnnotationInMethods(targetClass);
+        Set<PropertyDescriptor> commonDescriptor
+                = Sets.intersection(Sets.toSet(annotationMap.values()),
+                Sets.toSet(annotationMapInMethod.values()));
+        if (!CollectionUtils.isEmpty(commonDescriptor)) {
+            throw new BeanMappingException(DUPLICATE_DEFINE_ON_SAME_PROPERTY);
+        }
+        annotationMap.putAll(annotationMapInMethod);
 
         Map<Class<? extends PropertiesSourceObject>,Map<String,PropertyDescriptor>> sourcePropertyCache
                 = annotationMap.entrySet().stream()
@@ -58,17 +60,10 @@ public class BeanMappingInfo {
                                 }
                             }));
 
+        @SuppressWarnings("WeakerAccess")
         class TempEntry{
             Class<? extends PropertiesSourceObject> sourceClass;
             MappingInfoItem infoItem;
-
-            public Class<? extends PropertiesSourceObject> getSourceClass() {
-                return sourceClass;
-            }
-
-            public MappingInfoItem getInfoItem() {
-                return infoItem;
-            }
         }
         mappingInfos = annotationMap.entrySet().stream()
                 .map(entry -> {
@@ -80,16 +75,51 @@ public class BeanMappingInfo {
                 })
                 .collect(HashMap::new,
                         (map,tempEntry) -> {
-                            Set<MappingInfoItem> infoItems = map.get(tempEntry.sourceClass);
-                            if(infoItems == null){
-                                infoItems = new HashSet<>();
-                                map.put(tempEntry.sourceClass,infoItems);
-                            }
+                            Set<MappingInfoItem> infoItems
+                                    = map.computeIfAbsent(tempEntry.sourceClass, k -> new HashSet<>());
                             infoItems.add(tempEntry.infoItem);
                         },
-                        (map1,map2) ->{
-                            map1.putAll(map2);
-                        });
+                        HashMap::putAll);
+    }
+
+    private Map<DataMapping, PropertyDescriptor> findAllAnnotationInMethods(Class targetClass) {
+        try {
+            PropertyDescriptor[] propertyDescriptors = IntrospectorUtils.getAllPropertyDescriptors(targetClass);
+
+            @SuppressWarnings("WeakerAccess")
+            class TempEntry {
+                DataMapping annotation;
+                PropertyDescriptor descriptor;
+            }
+
+            return Arrays.stream(propertyDescriptors)
+                    .map(propertyDescriptor -> {
+                        Method readMethod = propertyDescriptor.getReadMethod(),
+                                writeMethod = propertyDescriptor.getWriteMethod();
+                        DataMapping annotationInReadMethod = readMethod != null ? readMethod.getDeclaredAnnotation(DataMapping.class) : null,
+                                annotationInWriteMethod = writeMethod != null ? writeMethod.getDeclaredAnnotation(DataMapping.class) : null;
+                        if (annotationInReadMethod != null && annotationInWriteMethod != null) {
+                            throw new BeanMappingException(DUPLICATE_DEFINE_ON_SAME_PROPERTY);
+                        } else if (annotationInReadMethod == null && annotationInWriteMethod == null) {
+                            return null;
+                        }
+                        TempEntry tempEntry = new TempEntry();
+                        if (annotationInReadMethod != null) {
+                            tempEntry.annotation = annotationInReadMethod;
+                        } else {
+                            tempEntry.annotation = annotationInWriteMethod;
+                        }
+                        tempEntry.descriptor = propertyDescriptor;
+                        return tempEntry;
+                    })
+                    .filter(Objects::nonNull)
+                    .collect(
+                            toMap(tempEntry -> tempEntry.annotation,
+                                    tempEntry -> tempEntry.descriptor));
+        } catch (IntrospectionException e) {
+            throw new BeanMappingException(SYSTEM_EXCEPTION +
+                    "; reason is " + e, e);
+        }
     }
 
     private MappingInfoItem getMappingInfoItem(DataMapping dataMapping
@@ -131,7 +161,7 @@ public class BeanMappingInfo {
         try {
             Map<String, PropertyDescriptor> descriptorMap
                     = Arrays.stream(IntrospectorUtils.getAllPropertyDescriptors(targetClass))
-                        .collect(toMap(descriptor -> descriptor.getName(), e -> e));
+                    .collect(toMap(FeatureDescriptor::getName, e -> e));
             return Arrays.stream(fields)
                     .peek(field -> {
                         if(!descriptorMap.containsKey(field.getName())){
@@ -147,83 +177,6 @@ public class BeanMappingInfo {
         }
     }
 
-    private Set<MappingInfoItem> parserMappingInfos(Class sourceClass, List<Field> fields) {
-//        PropertyDescriptor[] sourceDescriptors = null, targetDescriptors = null;
-//        try {
-//            sourceDescriptors = Introspector.getBeanInfo(sourceClass).getPropertyDescriptors();
-//        } catch (IntrospectionException e) {
-//            logger.info("fail to parse beaninfo from sourceClass :{}", sourceClass);
-//            throw new RuntimeException(e);
-//        }
-//        try {
-//            targetDescriptors = Introspector.getBeanInfo(targetClass).getPropertyDescriptors();
-//        } catch (IntrospectionException e) {
-//            logger.info("fail to parse beaninfo from targetClass :{}", targetClass);
-//            throw new RuntimeException(e);
-//        }
-//        Map<String, PropertyDescriptor> sourceDescriportsMap
-//                = Arrays.stream(sourceDescriptors)
-//                .collect(toMap(descriptor -> descriptor.getName(), e -> e));
-//        Map<String, PropertyDescriptor> targetDescriportsMap
-//                = Arrays.stream(targetDescriptors)
-//                .collect(toMap(descriptor -> descriptor.getName(), e -> e));
-//        return fields.stream()
-//                .map(field -> {
-//                    MappingInfoItem infoItem = new MappingInfoItem();
-//
-//                    String targetPropertyName = field.getName();
-//                    PropertyDescriptor targetSetter = targetDescriportsMap.get(targetPropertyName);
-//                    if (targetSetter == null) {
-//                        logger.info("can not found setter of target property {} from source class {}", targetPropertyName, targetClass);
-//                        throw new BeanMappingException("can not found setter of source property from target class");
-//                    } else {
-//                        infoItem.setTargetProperty(targetSetter);
-//                    }
-//
-//                    DataMapping dataMapping = field.getDeclaredAnnotation(DataMapping.class);
-//                    String sourcePropertyName = dataMapping.sourceProperty();
-//                    PropertyDescriptor sourceGetter = sourceDescriportsMap.get(sourcePropertyName);
-//                    if (sourceGetter == null) {
-//                        logger.info("can not found getter of source property {} from source class {}", sourcePropertyName, sourceClass);
-//                        throw new BeanMappingException("can not found source property from source class");
-//                    } else {
-//                        infoItem.setSourceProperty(sourceGetter);
-//                    }
-////                    infoItem.setNeedDeepCopy(dataMapping.needDeepCopy());
-//
-//                    Class converterClass = dataMapping.converter();
-//                    if (!converterClass.equals(DataMapping.DEFAULT_CONVERTER_CLASS)) {
-//                        try {
-//                            Constructor<Function> constructor = converterClass.getConstructor();
-//                            Function converter = constructor.newInstance();
-////                            infoItem.setConverter(converter);
-//                        } catch (NoSuchMethodException e) {
-//                            logger.info("given converter class {} does not have default constructor", converterClass);
-//                            throw new BeanMappingException("given converter class does not have default constructor", e);
-//                        } catch (IllegalAccessException | InstantiationException | InvocationTargetException e) {
-//                            logger.info("can not construct converter ,reason is {}", e);
-//                            throw new BeanMappingException("can not construct converter", e);
-//                        }
-//                    } else {
-////                        infoItem.setConverter(null);
-//                    }
-//
-//                    infoItem.verify();
-//
-//                    return infoItem;
-//                })
-//                .collect(toSet());
-        return null;
-    }
-
-
-    private Map<Class<? extends PropertiesSourceObject>, List<Field>> filterField(Class targetClass) {
-        Field[] fields = ReflectUtils.getAllDeclaredFields(targetClass, field -> field.getDeclaredAnnotation(DataMapping.class) != null);
-        return Arrays.stream(fields)
-                .collect(groupingBy(field ->
-                        field.getDeclaredAnnotation(DataMapping.class).sourceClass()
-                ));
-    }
 
     public static BeanMappingInfo parse(Class clazz) {
         BeanMappingInfo beanMappingInfo = new BeanMappingInfo(clazz);

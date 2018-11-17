@@ -3,6 +3,7 @@ package com.lzh.beanmapping.common.util;
 import java.lang.reflect.Field;
 import java.util.function.Predicate;
 
+@SuppressWarnings("WeakerAccess")
 public class ReflectUtils {
 
     /**
@@ -15,6 +16,7 @@ public class ReflectUtils {
      * @return array of Fields
      * @throws RuntimeException when StopClass can not be the subclass of given class will throw this exception
      */
+    @SuppressWarnings("unchecked")
     public static Field[] getAllDeclaredFields(Class clazz, Class stopClass, Predicate<Field> predicate) {
         if (stopClass == null) {
             stopClass = Object.class;
@@ -22,8 +24,7 @@ public class ReflectUtils {
         if (!checkStopClassIsNotSubClassOfClazz(clazz, stopClass)) {
             throw new RuntimeException("StopClass can not be the subclass of given class");
         }
-        Field[] fields = null;
-        fields = clazz.getDeclaredFields();
+        Field[] fields = clazz.getDeclaredFields();
         Class superClass = clazz.getSuperclass();
         while (superClass != null && stopClass.isAssignableFrom(superClass)) {
             fields = ArrayUtils.concat(fields, superClass.getDeclaredFields(), predicate);
